@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tlemmas-enumeration-testbench"
+version = "1.0.0"
+description = "Scripts and utils to test T-lemmas enumeration techniques"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    { name = "Emanuele Civini", email = "emanuelecivini@gmail.com" }
+]
+keywords = ["SMT", "Knowledge Compilation", "Enumeration"]
+dependencies = [
+    "allsat_cnf @ git+https://github.com/masinag/allsat-cnf@main",
+    "astutils==0.0.6",
+    "Cython==3.0.8",
+    "dd==0.6.0",
+    "gitdb==4.0.12",
+    "GitPython==3.1.46",
+    "networkx==3.6.1",
+    "numpy==2.4.2",
+    "ply==3.10",
+    "psutil==7.2.2",
+    "pydot==1.4.2",
+    "pyparsing==3.3.2",
+    "PySDD==1.0.0",
+    "PySMT==0.9.7.dev333",
+    "python-dotenv==1.0.1",
+    "PyYAML==6.0.3",
+    "setuptools==82.0.0",
+    "smmap==5.0.2",
+    "theorydd @ git+https://github.com/ecivini/tddnnf@main",
+]
+
+[tool.setuptools]
+package-dir = {"" = "scripts"}
+
+[tool.setuptools.packages.find]
+where = ["scripts"]
+
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+select = ["E", "F", "I"]
+ignore = []

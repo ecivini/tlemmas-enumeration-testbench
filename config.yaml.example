@@ -1,0 +1,26 @@
+# MB of memory per core
+memory: 16384 # 16GB
+
+# Maximum allowed solving time per problem in seconds
+timeout: 3600 # 1h
+
+# Number of concurrent evaluations running
+processes: 1
+
+# For compilation tasks, number of concurrent AllSMT processes per task that enumerates
+# total truth assignments
+allsmt_processes: 14
+
+# Benchmarks
+benchmarks: [
+  "data/benchmark/planning/h3/Painter"
+] 
+
+# T-Lemmas base path
+tlemmas_dir: ""
+
+# Ground truth logs path
+gt_tlemmas_dir: ""
+
+# Output dir, add a / to the end
+results: "results/"
