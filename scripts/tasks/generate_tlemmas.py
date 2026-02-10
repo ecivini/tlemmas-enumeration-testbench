@@ -1,6 +1,7 @@
 from theorydd.solvers.mathsat_total import MathSATTotalEnumerator
 from theorydd.solvers.mathsat_partial_extended import MathSATExtendedPartialEnumerator
 from theorydd.solvers.with_partitioning import WithPartitioningWrapper
+from theorydd.formula import get_normalized
 from pysmt.shortcuts import read_smtlib, And, write_smtlib
 
 import sys
@@ -50,6 +51,9 @@ def main():
         )
     else:
         raise ValueError("Invalid solver")
+
+    # Normalize phi
+    phi = get_normalized(phi, solver.get_converter())
 
     start = time.time()
     sat = "unknown"
