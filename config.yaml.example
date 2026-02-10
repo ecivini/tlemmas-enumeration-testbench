@@ -22,5 +22,11 @@ tlemmas_dir: ""
 # Ground truth logs path
 gt_tlemmas_dir: ""
 
+# Number of parallel workers for T-Lemmas check
+tlemmas_check_parallel_workers: 4
+
+# Number of projected variables per partial model for T-Lemmas check (determines the number of partial models used to split the work)
+tlemmas_check_num_projected_vars_per_partial_model: 10
+
 # Output dir, add a / to the end
 results: "results/"

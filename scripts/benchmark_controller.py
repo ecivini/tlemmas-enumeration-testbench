@@ -1,14 +1,15 @@
-from typing import Generator, Tuple
-import yaml
-import os
-import sys
-from multiprocessing import Pool
-import random
-import time
-import subprocess
-import resource
 import json
+import os
+import random
+import resource
+import subprocess
+import sys
+import time
+from multiprocessing import Pool
+from typing import Generator, Tuple
+
 import psutil
+import yaml
 
 ###############################################################################
 
@@ -104,11 +105,13 @@ def get_test_cases(
 
 def get_computed_tlemmas(path: str) -> dict[str, str]:
     tlemmas = {}
+    print(f"[+] Searching for computed tlemmas in {path}...")
     for root, _, files in os.walk(path):
         for file_path in files:
             tlemma = os.path.join(root, file_path)
 
             if check_ext(tlemma):
+                print(f"[+] Found computed tlemma: {tlemma}")
                 key = (
                     root.replace(path, "")
                     .replace("data/benchmark/", "")
@@ -143,14 +146,23 @@ def run_with_timeout_and_kill_children(
     proc = subprocess.Popen(
         command,
         preexec_fn=set_memory_limit(memory_limit),
-        stdout=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         env=os.environ.copy(),
     )
     try:
+        print(
+            f"\t[+] Running command: {' '.join(command)} with timeout {timeout}s and memory limit {memory_limit}MB"
+        )
         proc.wait(timeout=timeout + 2)
+        stderr = proc.stderr
+        if stderr is None:
+            print(f"\t[-] No stderr captured for command: {' '.join(command)}")
         return proc.returncode, proc.stderr.read().decode("utf-8")
     except subprocess.TimeoutExpired as e:
+        print(
+            f"\t[-] Timeout expired for command: {' '.join(command)}. Killing process and children..."
+        )
         parent = psutil.Process(proc.pid)
         for child in parent.children(recursive=True):
             try:
@@ -209,11 +221,21 @@ def tlemmas_check_task(data: dict) -> tuple:
     """
     test_succeeded = True
     error_message = ""
+
+    gt_tlemmas_path = data["gt_tlemmas_path"]
+    gt_tlemmas_logs_path = ""
+    if gt_tlemmas_path is not None:
+        gt_tlemmas_dir = os.path.dirname(gt_tlemmas_path)
+        gt_tlemmas_logs_path = os.path.join(gt_tlemmas_dir, "logs.json")
+
     try:
         print(f"[+] Testing t-lemmas for formula {data['formula_path']}...")
         command = (
             f"python3 scripts/tasks/tlemmas_check.py {data['formula_path']} "
-            f"{data['base_output_path']} {data['tlemmas_path']} {data['gt_tlemmas_path']}"
+            f"{data['base_output_path']} {data['tlemmas_path']} "
+            f"{data['tlemmas_check_parallel_workers']} "
+            f"{data['tlemmas_check_num_projected_vars_per_partial_model']} "
+            f"{gt_tlemmas_logs_path}"
         )
         command = command.split(" ")
         return_code, error = run_with_timeout_and_kill_children(
@@ -295,9 +317,14 @@ def main():
     allsmt_processes = int(config["allsmt_processes"])
 
     computed_tlemmas = {}
+    gt_tlemmas = {}
     if selected_task == TASK_TLEMMAS_CHECK:
         tlemmas_base_path = config["tlemmas_dir"]
         computed_tlemmas = get_computed_tlemmas(tlemmas_base_path)
+
+        gt_tlemmas_path = config["gt_tlemmas_dir"]
+        if os.path.isdir(gt_tlemmas_path):
+            gt_tlemmas = get_computed_tlemmas(gt_tlemmas_path)
 
     # Run tests
     datas = []
@@ -315,7 +342,13 @@ def main():
             "project_atoms": selected_task == TASK_TLEMMAS_WITH_PROJECTION,
             "solver": solver,
             "task": selected_task,
-            "gt_tlemmas_path": config["gt_tlemmas_dir"],
+            "gt_tlemmas_path": find_associated(test_case, gt_tlemmas),
+            "tlemmas_check_parallel_workers": int(
+                config["tlemmas_check_parallel_workers"]
+            ),
+            "tlemmas_check_num_projected_vars_per_partial_model": int(
+                config["tlemmas_check_num_projected_vars_per_partial_model"]
+            ),
         }
         datas.append(data)
 

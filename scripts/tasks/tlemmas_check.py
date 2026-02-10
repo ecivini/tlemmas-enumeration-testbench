@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 import sys
@@ -7,11 +8,10 @@ from typing import Iterable
 from pysmt.fnode import FNode
 from pysmt.oracles import get_logic
 from pysmt.shortcuts import And, Iff, Not, Solver, read_smtlib
+from tabularallsat import TabularAllSATInterface, ParallelWrapper
 from theorydd.formula import get_normalized
 from theorydd.walkers.walker_bool_abstraction import BooleanAbstractionWalker
 from theorydd.walkers.walker_refinement import RefinementWalker
-
-from tabularallsat import TabularAllSATInterface
 
 
 def assert_models_are_tsat(phi: FNode, models: list[Iterable[FNode]]) -> None:
@@ -53,25 +53,45 @@ def gt_model_count(logs: dict) -> int:
     return logs["T-DDNNF"]["Total models"]
 
 
-def main():
-    if len(sys.argv) < 4:
-        print(
-            "Usage: python3 scripts/tasks/tlemmas_check.py <input formula> "
-            "<base output path> <tlemmas to check path> <ground truth logs path | optional>"
-        )
-        sys.exit(1)
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Check T-lemmas by running AllSAT on the Boolean abstraction of phi & lemmas, and checking that all refined models are T-satisfying."
+    )
+    parser.add_argument("input_formula", help="Path to input SMT-LIB formula")
+    parser.add_argument("base_output_path", help="Base path for output files")
+    parser.add_argument(
+        "tlemmas_to_check_path",
+        help="Path to SMT-LIB file containing T-lemmas to check",
+    )
+    parser.add_argument("num_workers", type=int, help="Number of workers for AllSAT")
+    parser.add_argument(
+        "num_vars_per_partial_model",
+        type=int,
+        help="Number of variables per partial model for parallel AllSAT",
+    )
+    parser.add_argument(
+        "gt_logs_path",
+        nargs="?",
+        default=None,
+        help="Optional path to ground truth logs for model count comparison",
+    )
+    return parser.parse_args()
 
+
+def main():
+    args = parse_args()
     tabularallsat_path = os.getenv("TABULARALLSAT_PATH")
     if tabularallsat_path is None:
         raise ValueError("TABULARALLSAT_PATH environment variable not set")
 
     # Check base output path exists, otherwise create it
-    if not os.path.exists(sys.argv[2]):
-        os.makedirs(sys.argv[2])
+    base_output_path = args.base_output_path
+    if not os.path.exists(base_output_path):
+        os.makedirs(base_output_path)
 
-    phi = read_smtlib(sys.argv[1])
+    phi = read_smtlib(args.input_formula)
     # Process T-lemmas to check
-    tlemmas_path = sys.argv[3]
+    tlemmas_path = args.tlemmas_to_check_path
     if not os.path.isfile(tlemmas_path):
         print("[-] Invalid tlemmas path")
         sys.exit(1)
@@ -79,8 +99,8 @@ def main():
 
     # Read logs file
     gt_logs = None
-    if len(sys.argv) >= 5 and os.path.isfile(sys.argv[4]):
-        with open(sys.argv[4], "r") as logs_file:
+    if args.gt_logs_path:
+        with open(args.gt_logs_path, "r") as logs_file:
             gt_logs = json.load(logs_file)
 
     logger = {}
@@ -121,7 +141,12 @@ def main():
         # assert_phi_equiv_phi_and_lemmas(phi, phi_and_lemmas)
 
     print("Running AllSAT on Boolean abstraction ...")
-    solver_abstr = TabularAllSATInterface(tabularallsat_path)
+    ta_interface = TabularAllSATInterface(tabularallsat_path)
+    solver_abstr = ParallelWrapper(
+        ta_interface,
+        num_workers=args.num_workers,
+        num_vars_per_partial_model=args.num_vars_per_partial_model,
+    )
 
     # Check phi_and_lemmas is t-reduced
     print("Refining Boolean abstraction ...")
@@ -142,9 +167,11 @@ def main():
     assert_models_are_tsat(phi, refined_models)
 
     if gt_logs is not None:
-        assert len(refined_models) == gt_model_count(
-            gt_logs
-        ), "Refined models number should match ground truth"
+        refined_models_count = len(refined_models)
+        gt_count = gt_model_count(gt_logs)
+        assert (
+            refined_models_count == gt_count
+        ), f"Refined models number should match ground truth: {refined_models_count} vs {gt_count}"
 
     logger["T-LEMMAS CHECK"] = {}
     logger["T-LEMMAS CHECK"]["Total time"] = time.time() - start_time
