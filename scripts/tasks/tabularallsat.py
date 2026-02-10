@@ -169,6 +169,9 @@ class ParallelWrapper(ProjectedModelEnumerator):
     def projected_allsat(
         self, formula: FNode, projected_vars: list[FNode], total: bool = True
     ) -> Iterator[dict[FNode, bool]]:
+        print("CNFizing formula for parallel enumeration...", flush=True)
+        if not is_cnf(formula):
+            formula = LabelCNFizer().convert_as_formula(formula)
         print("Generating partial models for parallel enumeration...", flush=True)
         if self.num_vars_per_partial_model > 0:
             partial_projected_vars = projected_vars[: self.num_vars_per_partial_model]
