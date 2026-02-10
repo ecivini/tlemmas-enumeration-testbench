@@ -146,7 +146,7 @@ def run_with_timeout_and_kill_children(
     proc = subprocess.Popen(
         command,
         preexec_fn=set_memory_limit(memory_limit),
-        # stdout=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         env=os.environ.copy(),
     )
@@ -221,6 +221,13 @@ def tlemmas_check_task(data: dict) -> tuple:
     """
     test_succeeded = True
     error_message = ""
+
+    gt_tlemmas_path = data["gt_tlemmas_path"]
+    gt_tlemmas_logs_path = ""
+    if gt_tlemmas_path is not None:
+        gt_tlemmas_dir = os.path.dirname(gt_tlemmas_path)
+        gt_tlemmas_logs_path = os.path.join(gt_tlemmas_dir, "logs.json")
+
     try:
         print(f"[+] Testing t-lemmas for formula {data['formula_path']}...")
         command = (
@@ -228,7 +235,7 @@ def tlemmas_check_task(data: dict) -> tuple:
             f"{data['base_output_path']} {data['tlemmas_path']} "
             f"{data['tlemmas_check_parallel_workers']} "
             f"{data['tlemmas_check_num_projected_vars_per_partial_model']} "
-            f"{data['gt_tlemmas_path']}"
+            f"{gt_tlemmas_logs_path}"
         )
         command = command.split(" ")
         return_code, error = run_with_timeout_and_kill_children(
@@ -310,9 +317,14 @@ def main():
     allsmt_processes = int(config["allsmt_processes"])
 
     computed_tlemmas = {}
+    gt_tlemmas = {}
     if selected_task == TASK_TLEMMAS_CHECK:
         tlemmas_base_path = config["tlemmas_dir"]
         computed_tlemmas = get_computed_tlemmas(tlemmas_base_path)
+
+        gt_tlemmas_path = config["gt_tlemmas_dir"]
+        if os.path.isdir(gt_tlemmas_path):
+            gt_tlemmas = get_computed_tlemmas(gt_tlemmas_path)
 
     # Run tests
     datas = []
@@ -330,7 +342,7 @@ def main():
             "project_atoms": selected_task == TASK_TLEMMAS_WITH_PROJECTION,
             "solver": solver,
             "task": selected_task,
-            "gt_tlemmas_path": config["gt_tlemmas_dir"],
+            "gt_tlemmas_path": find_associated(test_case, gt_tlemmas),
             "tlemmas_check_parallel_workers": int(
                 config["tlemmas_check_parallel_workers"]
             ),

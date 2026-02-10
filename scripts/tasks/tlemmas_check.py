@@ -8,8 +8,7 @@ from typing import Iterable
 from pysmt.fnode import FNode
 from pysmt.oracles import get_logic
 from pysmt.shortcuts import And, Iff, Not, Solver, read_smtlib
-from tabularallsat import TabularAllSATInterface
-from tasks.tabularallsat import ParallelWrapper
+from tabularallsat import TabularAllSATInterface, ParallelWrapper
 from theorydd.formula import get_normalized
 from theorydd.walkers.walker_bool_abstraction import BooleanAbstractionWalker
 from theorydd.walkers.walker_refinement import RefinementWalker
@@ -36,9 +35,9 @@ def assert_lemmas_are_tvalid(lemmas: list[FNode]):
 
 def assert_phi_equiv_phi_and_lemmas(phi: FNode, phi_and_lemmas):
     with Solver("msat") as check_solver:
-        assert check_solver.is_valid(Iff(phi, phi_and_lemmas)), (
-            "Phi and Phi & lemmas are not theory-equivalent"
-        )
+        assert check_solver.is_valid(
+            Iff(phi, phi_and_lemmas)
+        ), "Phi and Phi & lemmas are not theory-equivalent"
 
 
 def process_raw_tlemmas(raw_tlemmas: FNode) -> list[FNode]:
@@ -126,9 +125,9 @@ def main():
     bool_walker = BooleanAbstractionWalker(atoms=phi_and_lemmas_atoms)
     phi_and_lemmas_abstr = bool_walker.walk(phi_and_lemmas)
     phi_abstr = bool_walker.walk(phi)
-    assert len(phi_abstr.get_atoms()) == len(phi_atoms), (
-        "Abstraction should preserve atoms of phi"
-    )
+    assert len(phi_abstr.get_atoms()) == len(
+        phi_atoms
+    ), "Abstraction should preserve atoms of phi"
 
     # NOTE: Some lemmas introduce fresh Skolem variables, which should be existentially quantified for the lemma to
     # be t-valid.
@@ -168,9 +167,11 @@ def main():
     assert_models_are_tsat(phi, refined_models)
 
     if gt_logs is not None:
-        assert len(refined_models) == gt_model_count(gt_logs), (
-            "Refined models number should match ground truth"
-        )
+        refined_models_count = len(refined_models)
+        gt_count = gt_model_count(gt_logs)
+        assert (
+            refined_models_count == gt_count
+        ), f"Refined models number should match ground truth: {refined_models_count} vs {gt_count}"
 
     logger["T-LEMMAS CHECK"] = {}
     logger["T-LEMMAS CHECK"]["Total time"] = time.time() - start_time
