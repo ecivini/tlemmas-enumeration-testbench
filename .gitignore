@@ -220,6 +220,7 @@ results/
 
 # Images
 *.png
+*.pdf
 config.yaml
 
 plots/
