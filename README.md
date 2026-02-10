@@ -1,4 +1,4 @@
-# Master's thesis project
+# Experimental evaluation scripts for the paper "Beyond Eager Encodings: A Theory-Agnostic Approach to Theory-Lemma Enumeration in SMT"
 
 ## Dependencies
 
@@ -10,7 +10,7 @@ $ pip3 install .
 $ pysmt-install --msat
 
 # Install TabularAllSAT solver
-$ git clone https://github.com/giuspek/tabularAllSAT.git
+$ git clone -b zero-initialize https://github.com/masinag/tabularAllSAT.git
 $ cd tabularAllSAT/cdcl-vsads
 $ ./configure
 $ make
