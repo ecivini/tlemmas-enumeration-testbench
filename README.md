@@ -10,7 +10,7 @@ $ pip3 install .
 $ pysmt-install --msat
 
 # Install TabularAllSAT solver
-$ git clone -b zero-initialize https://github.com/masinag/tabularAllSAT.git
+$ git clone https://github.com/giuspek/tabularAllSAT.git
 $ cd tabularAllSAT/cdcl-vsads
 $ ./configure
 $ make
