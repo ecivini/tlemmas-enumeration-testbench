@@ -225,10 +225,10 @@ def tlemmas_check_task(data: dict) -> tuple:
         print(f"[+] Testing t-lemmas for formula {data['formula_path']}...")
         command = (
             f"python3 scripts/tasks/tlemmas_check.py {data['formula_path']} "
-            f'"{data["base_output_path"]}" "{data["tlemmas_path"]}" '
+            f"{data['base_output_path']} {data['tlemmas_path']} "
             f"{data['tlemmas_check_parallel_workers']} "
             f"{data['tlemmas_check_num_projected_vars_per_partial_model']} "
-            f'"{data["gt_tlemmas_path"]}"'
+            f"{data['gt_tlemmas_path']}"
         )
         command = command.split(" ")
         return_code, error = run_with_timeout_and_kill_children(

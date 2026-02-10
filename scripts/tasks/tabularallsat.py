@@ -182,6 +182,7 @@ class ParallelWrapper(ProjectedModelEnumerator):
                 formula, partial_projected_vars, total=False
             )
         )
+        print(f"Found {len(partial_models)} partial models")
         worker_args = [(i,) for i in range(len(partial_models))]
 
         # Use a process pool to maintain constant number of workers
