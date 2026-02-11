@@ -40,7 +40,7 @@ dependencies = [
     "setuptools==82.0.0",
     "six==1.17.0",
     "smmap==5.0.2",
-    "tlemmas-enumeration @ git+https://github.com/ecivini/tlemmas-enumeration@main",
+    "tlemmas_enumeration @ git+https://github.com/ecivini/tlemmas-enumeration@main",
 ]
 
 [tool.setuptools]

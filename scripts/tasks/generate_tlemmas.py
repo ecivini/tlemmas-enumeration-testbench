@@ -1,7 +1,11 @@
-from theorydd.solvers.mathsat_total import MathSATTotalEnumerator
-from theorydd.solvers.mathsat_partial_extended import MathSATExtendedPartialEnumerator
-from theorydd.solvers.with_partitioning import WithPartitioningWrapper
-from theorydd.formula import get_normalized
+from enumerators.solvers.mathsat_total import MathSATTotalEnumerator
+from enumerators.solvers.mathsat_partial_extended import (
+    MathSATExtendedPartialEnumerator,
+)
+from enumerators.solvers.with_partitioning import (
+    WithPartitioningWrapper,
+)
+from enumerators.formula import get_normalized
 from pysmt.shortcuts import read_smtlib, And, write_smtlib
 
 import sys

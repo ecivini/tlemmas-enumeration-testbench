@@ -9,9 +9,11 @@ from pysmt.fnode import FNode
 from pysmt.oracles import get_logic
 from pysmt.shortcuts import And, Iff, Not, Solver, read_smtlib
 from tabularallsat import TabularAllSATInterface, ParallelWrapper
-from theorydd.formula import get_normalized
-from theorydd.walkers.walker_bool_abstraction import BooleanAbstractionWalker
-from theorydd.walkers.walker_refinement import RefinementWalker
+from enumerators.formula import get_normalized
+from enumerators.walkers.walker_bool_abstraction import (
+    BooleanAbstractionWalker,
+)
+from enumerators.walkers.walker_refinement import RefinementWalker
 
 
 def assert_models_are_tsat(phi: FNode, models: list[Iterable[FNode]]) -> None:
