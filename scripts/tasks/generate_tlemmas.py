@@ -1,6 +1,7 @@
 from enumerators.solvers.mathsat_total import MathSATTotalEnumerator
 from enumerators.solvers.mathsat_partial_extended import (
     MathSATExtendedPartialEnumerator,
+    DivideByProjectedEnumerationStrategy,
 )
 from enumerators.solvers.with_partitioning import (
     WithPartitioningWrapper,
@@ -43,6 +44,7 @@ def main():
             project_on_theory_atoms=project_tatoms,
             computation_logger=logger,
             parallel_procs=int(sys.argv[3]),
+            divide_strategy=DivideByProjectedEnumerationStrategy,
         )
     elif solver_name == "partition":
         solver = WithPartitioningWrapper(
@@ -50,6 +52,7 @@ def main():
                 project_on_theory_atoms=project_tatoms,
                 computation_logger=logger,
                 parallel_procs=int(sys.argv[3]),
+                divide_strategy=DivideByProjectedEnumerationStrategy,
             ),
             computation_logger=logger,
         )
