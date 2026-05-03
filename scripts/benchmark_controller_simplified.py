@@ -74,6 +74,7 @@ def task_gen(
     formula: Path, config: Config, output_dir: Path, args: argparse.Namespace
 ) -> tuple[Path, str | None]:
     print(f"[+] Generating T-lemmas: {formula}")
+
     cmd = [
         "python3",
         "scripts/tasks/generate_tlemmas.py",
@@ -81,9 +82,13 @@ def task_gen(
         str(output_dir / formula.with_suffix("")),
         config.allsmt_processes,
         args.solver,
-        str(args.projection),
-        str(args.partition),
     ]
+
+    if args.projection:
+        cmd.append("--projection")
+    if args.partition:
+        cmd.append("--partition")
+
     return execute_task(cmd, formula, config)
 
 
