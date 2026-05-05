@@ -77,7 +77,7 @@ def task_gen(
 
     cmd = [
         "python3",
-        "scripts/tasks/generate_tlemmas.py",
+        "scripts/tasks/generate_tlemmas_simplified.py",
         str(formula),
         str(output_dir / formula.with_suffix("")),
         config.allsmt_processes,
