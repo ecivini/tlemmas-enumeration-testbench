@@ -14,6 +14,8 @@ from pathlib import Path
 
 import yaml
 
+from tasks.generate_tlemmas_simplified import DIVIDE_STRATEGIES
+
 
 class Config:
     def __init__(self, path: Path | str = "config.yaml"):
@@ -88,6 +90,8 @@ def task_gen(
         cmd.append("--projection")
     if args.partition:
         cmd.append("--partition")
+    if args.solver == "parallel":
+        cmd.extend(["--parallel-divide-strategy", args.parallel_divide_strategy])
 
     return execute_task(cmd, formula, config)
 
@@ -156,6 +160,10 @@ def parse_args() -> argparse.Namespace:
     gen.add_argument("--solver", choices=["sequential", "parallel"], default="parallel")
     gen.add_argument("--projection", action="store_true")
     gen.add_argument("--partition", action="store_true")
+    gen.add_argument(
+        "--parallel-divide-strategy", choices=DIVIDE_STRATEGIES.keys(), default="partial",
+        help="Divide strategy for parallel enumeration"
+    )
 
     sub.add_parser("tlemmas_check", help="Check T-lemma correctness.")
     return parser.parse_args()

@@ -6,11 +6,16 @@ from pathlib import Path
 
 from enumerators.formula import get_normalized
 from enumerators.solvers.mathsat_partial_extended import (
-    MathSATExtendedPartialEnumerator,
+    DivideByPartialAllSMTStrategy, DivideByProjectedEnumerationStrategy, MathSATExtendedPartialEnumerator,
 )
 from enumerators.solvers.mathsat_total import MathSATTotalEnumerator
 from enumerators.solvers.with_partitioning import WithPartitioningWrapper
 from pysmt.shortcuts import And, read_smtlib, write_smtlib
+
+DIVIDE_STRATEGIES = {
+    "partial": DivideByPartialAllSMTStrategy,
+    "projection": DivideByProjectedEnumerationStrategy,
+}
 
 
 def main():
@@ -33,6 +38,10 @@ def main():
     parser.add_argument(
         "--partition", action="store_true", help="Enable partitioning wrapper"
     )
+    parser.add_argument(
+        "--parallel-divide-strategy", choices=DIVIDE_STRATEGIES.keys(), default="partial",
+        help="Divide strategy for parallel enumeration"
+    )
 
     args = parser.parse_args()
 
@@ -54,6 +63,7 @@ def main():
             project_on_theory_atoms=args.projection,
             computation_logger=logger,
             parallel_procs=args.procs,
+            divide_strategy=DIVIDE_STRATEGIES[args.parallel_divide_strategy],
         )
 
     if args.partition:
