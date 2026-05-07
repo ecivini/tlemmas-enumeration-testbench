@@ -53,6 +53,9 @@ def run_cmd(command: list[str], timeout: int, mem_bytes: int) -> tuple[int, str]
     except subprocess.TimeoutExpired:
         os.killpg(proc.pid, signal.SIGTERM)  # Safely kills the whole process tree
         return -1, "timeout"
+    except Exception as e:
+        os.killpg(proc.pid, signal.SIGTERM)
+        return -1, f"exception: {e}"
 
 
 def execute_task(
