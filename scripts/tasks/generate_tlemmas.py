@@ -1,86 +1,101 @@
-from enumerators.solvers.mathsat_total import MathSATTotalEnumerator
+import argparse
+import json
+import sys
+import time
+from pathlib import Path
+
+from enumerators.formula import get_normalized
 from enumerators.solvers.mathsat_partial_extended import (
+    DivideByPartialAllSMTStrategy,
+    DivideByProjectedEnumerationStrategy,
     MathSATExtendedPartialEnumerator,
 )
-from enumerators.solvers.with_partitioning import (
-    WithPartitioningWrapper,
-)
-from enumerators.formula import get_normalized
-from pysmt.shortcuts import read_smtlib, And, write_smtlib
+from enumerators.solvers.mathsat_total import MathSATTotalEnumerator
+from enumerators.solvers.with_partitioning import WithPartitioningWrapper
+from pysmt.shortcuts import And, read_smtlib, write_smtlib
 
-import sys
-import os
-import json
-import time
+DIVIDE_STRATEGIES = {
+    "partial": DivideByPartialAllSMTStrategy,
+    "projection": DivideByProjectedEnumerationStrategy,
+}
 
 
 def main():
-    if len(sys.argv) != 6:
-        print(
-            "Usage: python3 scripts/tasks/compile_tasks.py <input formula> "
-            "<base output path> <allsmt_processes> <solver> <project t-atoms>"
-        )
+    parser = argparse.ArgumentParser(
+        description="Generate T-lemmas for an SMT formula."
+    )
+
+    # Positional arguments
+    parser.add_argument("formula", type=Path, help="Path to the input SMT-LIB formula")
+    parser.add_argument("output_dir", type=Path, help="Base directory for output files")
+    parser.add_argument("procs", type=int, help="Number of parallel processes")
+    parser.add_argument(
+        "solver", choices=["sequential", "parallel"], help="Base solver type"
+    )
+
+    # Optional flags
+    parser.add_argument(
+        "--projection", action="store_true", help="Enable projection on theory atoms"
+    )
+    parser.add_argument(
+        "--partition", action="store_true", help="Enable partitioning wrapper"
+    )
+    parser.add_argument(
+        "--parallel-divide-strategy",
+        choices=DIVIDE_STRATEGIES.keys(),
+        default="partial",
+        help="Divide strategy for parallel enumeration",
+    )
+
+    args = parser.parse_args()
+
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    logger = {}
+
+    try:
+        phi = read_smtlib(str(args.formula))
+    except Exception as e:
+        print(f"[-] Failed to read formula {args.formula}: {e}")
         sys.exit(1)
 
-    # Check base output path exists, otherwise create it
-    if not os.path.exists(sys.argv[2]):
-        os.makedirs(sys.argv[2])
-
-    logger = {}
-    phi = read_smtlib(sys.argv[1])
-
-    # Find project_on_theory_atoms
-    project_tatoms = sys.argv[5].lower() == "true"
-
-    # Create the appropriate solver
-    solver_name = sys.argv[4].lower().strip()
-    if solver_name == "sequential":
+    if args.solver == "sequential":
         solver = MathSATTotalEnumerator(
-            project_on_theory_atoms=project_tatoms, computation_logger=logger
+            project_on_theory_atoms=args.projection, computation_logger=logger
         )
-    elif solver_name == "parallel":
+    else:  # parallel
         solver = MathSATExtendedPartialEnumerator(
-            project_on_theory_atoms=project_tatoms,
+            project_on_theory_atoms=args.projection,
             computation_logger=logger,
-            parallel_procs=int(sys.argv[3]),
+            parallel_procs=args.procs,
+            divide_strategy=DIVIDE_STRATEGIES[args.parallel_divide_strategy],
         )
-    elif solver_name == "partition":
-        solver = WithPartitioningWrapper(
-            MathSATExtendedPartialEnumerator(
-                project_on_theory_atoms=project_tatoms,
-                computation_logger=logger,
-                parallel_procs=int(sys.argv[3]),
-            ),
-            computation_logger=logger,
-        )
-    else:
-        raise ValueError("Invalid solver")
 
-    # Normalize phi
+    if args.partition:
+        solver = WithPartitioningWrapper(solver, computation_logger=logger)
+
     phi = get_normalized(phi, solver.get_converter())
 
-    start = time.time()
-    sat = "unknown"
+    start_time = time.time()
     try:
         sat = solver.check_all_sat(phi)
-    except Exception:
-        print(f"[-] Exception during compilation of {sys.argv[1]}")
+    except Exception as e:
+        print(f"[-] Exception during compilation of {args.formula}: {e}")
         sys.exit(1)
-    total_time = time.time() - start
 
-    # Store T-lemmas
+    total_time = time.time() - start_time
+
     tlemmas = solver.get_theory_lemmas()
-    tlemmas_and = And(tlemmas)
+    write_smtlib(And(tlemmas), str(args.output_dir / "tlemmas.smt2"))
 
-    tlemmas_path = os.path.join(sys.argv[2], "tlemmas.smt2")
-    write_smtlib(tlemmas_and, tlemmas_path)
+    logger.update(
+        {
+            "T-Lemmas number": len(tlemmas),
+            "Satisfiable": sat,
+            "Total time": total_time,
+        }
+    )
 
-    logger["T-Lemmas number"] = len(tlemmas)
-    logger["Satisfiable"] = sat
-    logger["Total time"] = total_time
-
-    log_path = os.path.join(sys.argv[2], "logs.json")
-    with open(log_path, "w") as log_file:
+    with (args.output_dir / "logs.json").open("w") as log_file:
         json.dump(logger, log_file, indent=4)
 
 
