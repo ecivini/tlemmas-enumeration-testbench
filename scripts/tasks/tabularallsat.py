@@ -7,11 +7,11 @@ from typing import Callable, Iterator, Protocol
 import numpy as np
 from allsat_cnf.label_cnfizer import LabelCNFizer
 from allsat_cnf.utils import is_cnf
-from dimacs import DimacsInterface
-from dimacs import read_models as read_models_cython
 from pysmt.fnode import FNode
 from pysmt.formula import FormulaManager
 from pysmt.shortcuts import get_env
+from tasks.dimacs import DimacsInterface
+from tasks.dimacs import read_models as read_models_cython
 
 
 def _run_cmd(cmd: list[str], cwd: str) -> None:
@@ -149,6 +149,7 @@ class ParallelWrapper(ProjectedModelEnumerator):
             list of models found by the worker
         """
         global _PHI, _PHI_ATOMS, _PARTIAL_MODELS
+        assert _PARTIAL_MODELS is not None
 
         (model_id,) = args
         mgr = get_env().formula_manager
