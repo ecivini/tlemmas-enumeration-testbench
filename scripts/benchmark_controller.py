@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Callable
 
 import yaml
-from tasks.tlemma_utils import DIVIDE_STRATEGIES
+from tasks.generate_tlemmas import DIVIDE_STRATEGIES
 
 
 class Config:
