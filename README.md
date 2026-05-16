@@ -21,69 +21,80 @@ $ export TABULARALLSAT_PATH=$(pwd)/solver
 
 ### Generating T-lemmas
 
-First of all, you need to create a config.yaml file.
-```bash
-$ cp config.yaml.example config.yaml
-```
+1. Create a config.yaml file.
 
-Then, you need to configure it according to the benchmark you want to execute.
-Here is an example for Planning problems, using 45 cores for parallelized solvers, timeouts set to 1h, and 16GB of RAM. You can leave `tlemmas_dir` and `gt_tlemmas_dir` empty.
+   ```bash
+   cp config.yaml.example config.yaml
+   ```
 
-```yaml
-# MB of memory per core
-memory: 16384
+2. Configure it according to the benchmark you want to execute.
+   Here is an example for Planning problems, using 45 cores for parallelized
+   solvers, timeouts set to 1h, and 16GB of RAM. You can leave `tlemmas_dir` and
+   `gt_tlemmas_dir` empty.
 
-# Maximum allowed solving time per problem in seconds
-timeout: 3600
+   ```yaml
+   # MB of memory per core
+   memory: 16384
+   # Maximum allowed solving time per problem in seconds
+   timeout: 3600
+   # Number of concurrent evaluations running
+   processes: 1
+   # For parallel t-lemma enumeration, number of concurrent AllSMT processes
+   allsmt_processes: 45
+   # Benchmarks
+   benchmarks: [
+       # Base test cases
+       "data/benchmark/planning/h3/Painter",
+     ]
+   # T-Lemmas base path
+   tlemmas_dir: ""
+   # Ground truth logs path
+   gt_tlemmas_dir: ""
+   # Output dir, add a / to the end
+   results: "results/"
+   ```
 
-# Number of concurrent evaluations running
-processes: 1
+3. Run the benchmark controller. For example:
 
-# For compilation tasks, number of concurrent AllSMT processes per task that enumerates
-# total truth assignments
-allsmt_processes: 45
+   - Enumeration with sequential algorithm (baseline)
 
-# Benchmarks
-benchmarks: [
-  # Base test cases
-  "data/benchmark/planning/h3/Painter"
-] 
+     ```bash
+     $ python3 scripts/benchmark_controller.py <output_folder> \
+     tlemmas_gen --solver sequential
 
-# T-Lemmas base path
-tlemmas_dir: ""
+     ```
 
-# Ground truth logs path
-gt_tlemmas_dir: ""
+   - Enumeration with parallel algorithm (divide&conquer)
 
-# Output dir, add a / to the end
-results: "results/"
-```
+     ```bash
+     $ python3 scripts/benchmark_controller.py <output_folder> \
+     tlemmas_gen --solver parallel
+     ```
 
-Then, run the benchmark controller:
-```bash
-# Run with projection and partitioning
-$ python3 scripts/benchmark_controller.py tlemmas_proj <output_folder> partition
+   - Enumeration with parallel algorithm with projection on T-atoms
 
-# OR
-# Run with projection alone
-$ python3 scripts/benchmark_controller.py tlemmas_proj <output_folder> parallel
+     ```bash
+     $ python3 scripts/benchmark_controller.py <output_folder> \
+     tlemmas_gen --solver parallel --projection
+     ```
 
-# OR
-# Run with divide and conquer alone
-$ python3 scripts/benchmark_controller.py tlemmas <output_folder> parallel
+   - Enumeration with parallel algorithm with projection on T-atoms \
+      and partitioning
 
-# OR
-# Run with allsmt
-$ python3 scripts/benchmark_controller.py tlemmas <output_folder> sequential
-```
+     ```bash
+     $ python3 scripts/benchmark_controller.py <output_folder> \
+     tlemmas_gen --solver parallel --projection --partition
+     ```
 
 ### Checking T-lemmas
 
-In your `config.yaml`, you need to fill the `tlemmas_dir` and `gt_tlemmas_dir` fields.
-The first is used to specify the folder in which the generated T-lemmas to check are stored.
-The second one is optional and is used to provide the ground truth data, as an additional check. 
+1. Fill the `tlemmas_dir` in `config.yaml` and `gt_tlemmas_dir` fields.
+   The first is used to specify the folder in which the generated T-lemmas to
+   check are stored. The second one is optional and is used to provide the ground
+   truth data, as an additional check.
 
-Then, run the benchmark controller:
-```bash
-$ python3 scripts/benchmark_controller.py tlemmas_check <output_folder> partition
-```
+2. Run the benchmark controller:
+
+   ```bash
+   python3 scripts/benchmark_controller.py <output_folder> tlemmas_check
+   ```
