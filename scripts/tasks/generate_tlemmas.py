@@ -1,39 +1,29 @@
+"""Generate T-lemmas for a single SMT formula."""
+
 import argparse
-import json
-import sys
-import time
 from pathlib import Path
+from typing import get_args
 
-from enumerators.formula import get_normalized
-from enumerators.solvers.mathsat_partial_extended import (
-    DivideByPartialAllSMTStrategy,
-    DivideByProjectedEnumerationStrategy,
-    MathSATExtendedPartialEnumerator,
+from enumerators.formula import get_theory_atoms
+from tasks.tlemma_utils import (
+    DIVIDE_STRATEGIES,
+    SOLVER,
+    create_solver,
+    read_formula,
+    run_enumeration,
 )
-from enumerators.solvers.mathsat_total import MathSATTotalEnumerator
-from enumerators.solvers.with_partitioning import WithPartitioningWrapper
-from pysmt.shortcuts import And, read_smtlib, write_smtlib
-
-DIVIDE_STRATEGIES = {
-    "partial": DivideByPartialAllSMTStrategy,
-    "projection": DivideByProjectedEnumerationStrategy,
-}
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate T-lemmas for an SMT formula."
     )
 
-    # Positional arguments
     parser.add_argument("formula", type=Path, help="Path to the input SMT-LIB formula")
     parser.add_argument("output_dir", type=Path, help="Base directory for output files")
     parser.add_argument("procs", type=int, help="Number of parallel processes")
-    parser.add_argument(
-        "solver", choices=["sequential", "parallel"], help="Base solver type"
-    )
+    parser.add_argument("solver", choices=get_args(SOLVER), help="Base solver type")
 
-    # Optional flags
     parser.add_argument(
         "--projection", action="store_true", help="Enable projection on theory atoms"
     )
@@ -46,57 +36,47 @@ def main():
         default="partial",
         help="Divide strategy for parallel enumeration",
     )
+    parser.add_argument(
+        "--queries-dir",
+        type=Path,
+        default=None,
+        help="Directory of query formulas to add atoms from",
+    )
 
     args = parser.parse_args()
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    logger = {}
+    print(f"reading formula from {args.formula}")
 
-    try:
-        phi = read_smtlib(str(args.formula))
-    except Exception as e:
-        print(f"[-] Failed to read formula {args.formula}: {e}")
-        sys.exit(1)
+    logger: dict = {}
+    formula = read_formula(args.formula)
+    atoms = list(formula.get_atoms())
+    print(f"formula has {len(atoms)} atoms")
 
-    if args.solver == "sequential":
-        solver = MathSATTotalEnumerator(
-            project_on_theory_atoms=args.projection, computation_logger=logger
-        )
-    else:  # parallel
-        solver = MathSATExtendedPartialEnumerator(
-            project_on_theory_atoms=args.projection,
-            computation_logger=logger,
-            parallel_procs=args.procs,
-            divide_strategy=DIVIDE_STRATEGIES[args.parallel_divide_strategy],
-        )
+    if args.queries_dir is not None:
+        for query_file in sorted(args.queries_dir.glob("*.smt2")):
+            query = read_formula(query_file)
+            atoms.extend(query.get_atoms())
 
-    if args.partition:
-        solver = WithPartitioningWrapper(solver, computation_logger=logger)
-
-    phi = get_normalized(phi, solver.get_converter())
-
-    start_time = time.time()
-    try:
-        sat = solver.check_all_sat(phi)
-    except Exception as e:
-        print(f"[-] Exception during compilation of {args.formula}: {e}")
-        sys.exit(1)
-
-    total_time = time.time() - start_time
-
-    tlemmas = solver.get_theory_lemmas()
-    write_smtlib(And(tlemmas), str(args.output_dir / "tlemmas.smt2"))
-
-    logger.update(
-        {
-            "T-Lemmas number": len(tlemmas),
-            "Satisfiable": sat,
-            "Total time": total_time,
-        }
+    print(
+        f"formula+queries has {len(atoms)} atoms,"
+        f" {len(get_theory_atoms(atoms))} of which are theory"
+    )
+    solver = create_solver(
+        solver_type=args.solver,
+        procs=args.procs,
+        projection=args.projection,
+        partition=args.partition,
+        divide_strategy=args.parallel_divide_strategy,
+        logger=logger,
     )
 
-    with (args.output_dir / "logs.json").open("w") as log_file:
-        json.dump(logger, log_file, indent=4)
+    run_enumeration(
+        formula=formula,
+        atoms=atoms,
+        solver=solver,
+        output_dir=args.output_dir,
+        logger=logger,
+    )
 
 
 if __name__ == "__main__":
