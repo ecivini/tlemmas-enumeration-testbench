@@ -95,7 +95,6 @@ def run_enumeration(
         for atom in atoms
         if not (natom := get_normalized(atom, converter)).is_bool_constant()
     ]
-    print(f"{len(atoms)} normalized atoms")
 
     if logger is not None:
         logger["Atoms count"] = len(atoms)

@@ -4,7 +4,6 @@ import argparse
 from pathlib import Path
 from typing import get_args
 
-from enumerators.formula import get_theory_atoms
 from tasks.tlemma_utils import (
     DIVIDE_STRATEGIES,
     SOLVER,
@@ -45,22 +44,15 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    print(f"reading formula from {args.formula}")
-
     logger: dict = {}
     formula = read_formula(args.formula)
     atoms = list(formula.get_atoms())
-    print(f"formula has {len(atoms)} atoms")
 
     if args.queries_dir is not None:
         for query_file in sorted(args.queries_dir.glob("*.smt2")):
             query = read_formula(query_file)
             atoms.extend(query.get_atoms())
 
-    print(
-        f"formula+queries has {len(atoms)} atoms,"
-        f" {len(get_theory_atoms(atoms))} of which are theory"
-    )
     solver = create_solver(
         solver_type=args.solver,
         procs=args.procs,
