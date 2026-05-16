@@ -226,3 +226,7 @@ config.yaml
 plots/
 tabularAllSAT
 .idea
+
+# Numeric planning benchmark artifacts
+data/benchmark/numeric-planning/*/instances/
+transition*.smt2
