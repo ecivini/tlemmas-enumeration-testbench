@@ -13,7 +13,7 @@ from enumerators.walkers.walker_refinement import RefinementWalker
 from pysmt.fnode import FNode
 from pysmt.oracles import get_logic
 from pysmt.shortcuts import And, Iff, Not, Solver, read_smtlib
-from tabularallsat import ParallelWrapper, TabularAllSATInterface
+from tasks.tabularallsat import ParallelWrapper, TabularAllSATInterface
 
 
 def assert_models_are_tsat(phi: FNode, models: list[Iterable[FNode]]) -> None:
