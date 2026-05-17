@@ -1,0 +1,7 @@
+(set-logic QF_LRA)
+(declare-fun fluent_y_b2@5 () Real)
+(declare-fun fluent_x_b1@5 () Real)
+(declare-fun fluent_x_b2@5 () Real)
+(declare-fun fluent_y_b1@5 () Real)
+(assert (let ((.def_0 (= fluent_y_b1@5 fluent_y_b2@5))) (let ((.def_1 (= fluent_x_b1@5 fluent_x_b2@5))) (let ((.def_2 (and .def_1 .def_0))) (let ((.def_3 (not .def_2))) .def_3)))))
+(check-sat)
