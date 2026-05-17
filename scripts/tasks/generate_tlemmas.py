@@ -20,20 +20,12 @@ from enumerators.solvers.with_partitioning import WithPartitioningWrapper
 from pysmt.fnode import FNode
 from pysmt.shortcuts import And, read_smtlib, write_smtlib
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
 DIVIDE_STRATEGIES: dict[str, type] = {
     "partial": DivideByPartialAllSMTStrategy,
     "projection": DivideByProjectedEnumerationStrategy,
 }
 
 SOLVER = Literal["sequential", "parallel"]
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def read_formula(path: Path) -> FNode:
@@ -51,7 +43,7 @@ def create_solver(
     procs: int,
     projection: bool,
     partition: bool,
-    divide_strategy: str = "partial",
+    divide_strategy: str,
     logger: dict[str, Any] | None = None,
 ) -> SMTEnumerator:
     """Create and configure an SMT solver for T-lemma enumeration."""
@@ -114,11 +106,6 @@ def run_enumeration(
         json.dump(logger, log_file, indent=4)
 
     return sat
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 
 def main() -> None:
