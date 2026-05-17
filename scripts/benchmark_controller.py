@@ -16,6 +16,24 @@ from typing import Callable
 import yaml
 from tasks.generate_tlemmas import DIVIDE_STRATEGIES
 
+# Track active subprocesses per worker for cleanup on SIGTERM
+_active_procs: list[subprocess.Popen] = []
+
+
+def _worker_sigterm_handler(signum: int, frame) -> None:
+    """Kill all active subprocesses when the pool is terminated."""
+    for proc in _active_procs:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+
+def init_worker() -> None:
+    """Initialize a worker process: ignore SIGINT, cleanup on SIGTERM."""
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, _worker_sigterm_handler)
+
 
 class Config:
     def __init__(self, path: Path | str = "config.yaml"):
@@ -46,16 +64,19 @@ def run_cmd(command: list[str], timeout: int, mem_bytes: int) -> tuple[int, str]
     proc = subprocess.Popen(
         command, preexec_fn=preexec, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
     )
+    _active_procs.append(proc)
 
     try:
         _, stderr = proc.communicate(timeout=timeout + 2)
         return proc.returncode, stderr.decode()
     except subprocess.TimeoutExpired:
-        os.killpg(proc.pid, signal.SIGTERM)  # Safely kills the whole process tree
+        os.killpg(proc.pid, signal.SIGKILL)
         return -1, "timeout"
     except Exception as e:
-        os.killpg(proc.pid, signal.SIGTERM)
+        os.killpg(proc.pid, signal.SIGKILL)
         return -1, f"exception: {e}"
+    finally:
+        _active_procs.remove(proc)
 
 
 def execute_task(
@@ -267,10 +288,16 @@ def main() -> None:
     start_time = time.time()
     errors = {}
 
-    with Pool(processes=config.processes) as pool:
-        for item, error in pool.imap_unordered(worker, items):  # type: ignore[arg-type]
-            if error:
-                errors[str(item)] = error
+    with Pool(processes=config.processes, initializer=init_worker) as pool:
+        try:
+            for item, error in pool.imap_unordered(worker, items):  # type: ignore[arg-type]
+                if error:
+                    errors[str(item)] = error
+        except KeyboardInterrupt:
+            print("\n[-] Interrupted, terminating workers...")
+            pool.terminate()
+            pool.join()
+            return
 
     if errors:
         (output_dir / "errors.json").write_text(json.dumps(errors, indent=4))
