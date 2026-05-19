@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 from typing import Any, Literal, cast, get_args
 
-from enumerators.formula import get_normalized
 from enumerators.solvers.mathsat_partial_extended import (
     DivideByPartialAllSMTStrategy,
     DivideByProjectedEnumerationStrategy,
@@ -17,6 +16,7 @@ from enumerators.solvers.mathsat_partial_extended import (
 from enumerators.solvers.mathsat_total import MathSATTotalEnumerator
 from enumerators.solvers.solver import SMTEnumerator
 from enumerators.solvers.with_partitioning import WithPartitioningWrapper
+from enumerators.walkers.normalizer import NormalizerWalker
 from pysmt.fnode import FNode
 from pysmt.shortcuts import And, read_smtlib, write_smtlib
 
@@ -75,13 +75,13 @@ def run_enumeration(
 ) -> bool:
     """Run T-lemma enumeration and save results to output_dir."""
     output_dir.mkdir(parents=True, exist_ok=True)
+    norm = NormalizerWalker(solver.get_converter())
 
-    converter = solver.get_converter()
-    formula = get_normalized(formula, converter)
+    formula = norm.normalize(formula)
     atoms = [
-        natom
+        natom.arg(0) if natom.is_not() else natom
         for atom in atoms
-        if not (natom := get_normalized(atom, converter)).is_bool_constant()
+        if not (natom := norm.normalize(atom)).is_bool_constant()
     ]
 
     if logger is not None:
