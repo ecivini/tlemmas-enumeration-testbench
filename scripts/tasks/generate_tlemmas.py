@@ -133,7 +133,7 @@ def add_gen_args(parser: argparse.ArgumentParser) -> None:
         "--partition",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="Enable partitiong wrappe (default: disabled)",
+        help="Enable partitiong wrapper (default: disabled)",
     )
     parser.add_argument(
         "--parallel-divide-strategy",
