@@ -115,21 +115,25 @@ def run_enumeration(
     return sat
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Generate T-lemmas for an SMT formula."
-    )
-
-    parser.add_argument("formula", type=Path, help="Path to the input SMT-LIB formula")
-    parser.add_argument("output_dir", type=Path, help="Base directory for output files")
-    parser.add_argument("procs", type=int, help="Number of parallel processes")
-    parser.add_argument("solver", choices=get_args(SOLVER), help="Base solver type")
-
+def add_gen_args(parser: argparse.ArgumentParser) -> None:
+    """Add common T-lemma generation arguments to a subparser."""
     parser.add_argument(
-        "--projection", action=argparse.BooleanOptionalAction, default=False
+        "--solver",
+        choices=get_args(SOLVER),
+        default="parallel",
+        help="Solver mode: sequential or parallel (default: parallel)",
     )
     parser.add_argument(
-        "--partition", action=argparse.BooleanOptionalAction, default=False
+        "--projection",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable projection on theory atoms (default: disabled)",
+    )
+    parser.add_argument(
+        "--partition",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable partitiong wrappe (default: disabled)",
     )
     parser.add_argument(
         "--parallel-divide-strategy",
@@ -141,18 +145,31 @@ def main() -> None:
         "--partition-find-components",
         action=argparse.BooleanOptionalAction,
         default=False,
+        help="Find relevant formula components when partitioning (default: disabled)",
     )
     parser.add_argument(
         "--partition-share-tlemmas",
         action=argparse.BooleanOptionalAction,
         default=False,
+        help="Share learned T-lemmas across partitions (default: disabled)",
     )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Generate T-lemmas for an SMT formula."
+    )
+
+    parser.add_argument("formula", type=Path, help="Path to the input SMT-LIB formula")
+    parser.add_argument("output_dir", type=Path, help="Base directory for output files")
+    parser.add_argument("procs", type=int, help="Number of parallel processes")
     parser.add_argument(
         "--queries-dir",
         type=Path,
         default=None,
         help="Directory of query formulas to add atoms from",
     )
+    add_gen_args(parser)
 
     args = parser.parse_args()
 
