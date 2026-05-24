@@ -44,6 +44,8 @@ def create_solver(
     projection: bool,
     partition: bool,
     divide_strategy: str,
+    partition_on_formula_components: bool,
+    share_tlemmas_between_partitions: bool,
     logger: dict[str, Any] | None = None,
 ) -> SMTEnumerator:
     """Create and configure an SMT solver for T-lemma enumeration."""
@@ -61,7 +63,12 @@ def create_solver(
         )
 
     if partition:
-        solver = WithPartitioningWrapper(solver, computation_logger=logger)
+        solver = WithPartitioningWrapper(
+            solver,
+            partition_on_formula_components=partition_on_formula_components,
+            share_tlemmas_between_partitions=share_tlemmas_between_partitions,
+            computation_logger=logger,
+        )
 
     return solver
 
@@ -119,16 +126,26 @@ def main() -> None:
     parser.add_argument("solver", choices=get_args(SOLVER), help="Base solver type")
 
     parser.add_argument(
-        "--projection", action="store_true", help="Enable projection on theory atoms"
+        "--projection", action=argparse.BooleanOptionalAction, default=False
     )
     parser.add_argument(
-        "--partition", action="store_true", help="Enable partitioning wrapper"
+        "--partition", action=argparse.BooleanOptionalAction, default=False
     )
     parser.add_argument(
         "--parallel-divide-strategy",
         choices=DIVIDE_STRATEGIES.keys(),
         default="partial",
         help="Divide strategy for parallel enumeration",
+    )
+    parser.add_argument(
+        "--partition-find-components",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument(
+        "--partition-share-tlemmas",
+        action=argparse.BooleanOptionalAction,
+        default=False,
     )
     parser.add_argument(
         "--queries-dir",
@@ -154,6 +171,8 @@ def main() -> None:
         projection=args.projection,
         partition=args.partition,
         divide_strategy=args.parallel_divide_strategy,
+        partition_on_formula_components=args.partition_find_components,
+        share_tlemmas_between_partitions=args.partition_share_tlemmas,
         logger=logger,
     )
 

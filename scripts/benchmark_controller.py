@@ -121,10 +121,15 @@ def task_gen(
 
     if queries_dir is not None:
         cmd.extend(["--queries-dir", str(queries_dir)])
-    if args.projection:
-        cmd.append("--projection")
-    if args.partition:
-        cmd.append("--partition")
+    cmd.append(f"--{'' if args.projection else 'no-'}projection")
+    cmd.append(f"--{'' if args.partition else 'no-'}partition")
+    cmd.append(
+        f"--{'' if args.partition_find_components else 'no-'}partition-find-components"
+    )
+    cmd.append(
+        f"--{'' if args.partition_share_tlemmas else 'no-'}partition-share-tlemmas"
+    )
+
     if args.solver == "parallel":
         cmd.extend(["--parallel-divide-strategy", args.parallel_divide_strategy])
 
@@ -174,9 +179,7 @@ def get_pending_items(
         paths: Benchmark directories to scan.
         output_dir: Output directory for checking already-computed items.
         file_filter: Predicate applied to each .smt2 file; only matching files are kept.
-        output_path_fn: Computes the output path for skip checking. Defaults to
-            output_dir / f.relative_to(root).with_suffix("").
-
+        output_path_fn: Computes the output path for skip checking.
     Returns:
         List of (formula, benchmark_root) tuples.
     """
@@ -217,13 +220,27 @@ def _add_gen_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--solver", choices=["sequential", "parallel"], default="parallel"
     )
-    parser.add_argument("--projection", action="store_true")
-    parser.add_argument("--partition", action="store_true")
+    parser.add_argument(
+        "--projection", action=argparse.BooleanOptionalAction, default=False
+    )
+    parser.add_argument(
+        "--partition", action=argparse.BooleanOptionalAction, default=False
+    )
     parser.add_argument(
         "--parallel-divide-strategy",
         choices=DIVIDE_STRATEGIES.keys(),
         default="partial",
         help="Divide strategy for parallel enumeration",
+    )
+    parser.add_argument(
+        "--partition-find-components",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument(
+        "--partition-share-tlemmas",
+        action=argparse.BooleanOptionalAction,
+        default=False,
     )
 
 
