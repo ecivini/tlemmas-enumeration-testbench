@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Callable
 
 import yaml
-from tasks.generate_tlemmas import DIVIDE_STRATEGIES
+from tasks.generate_tlemmas import add_gen_args
 
 # Track active subprocesses per worker for cleanup on SIGTERM
 _active_procs: list[subprocess.Popen] = []
@@ -116,11 +116,11 @@ def task_gen(
         str(formula),
         str(output_dir / rel),
         config.allsmt_processes,
-        args.solver,
     ]
-
     if queries_dir is not None:
         cmd.extend(["--queries-dir", str(queries_dir)])
+
+    cmd.extend(["--solver", args.solver])
     cmd.append(f"--{'' if args.projection else 'no-'}projection")
     cmd.append(f"--{'' if args.partition else 'no-'}partition")
     cmd.append(
@@ -215,42 +215,13 @@ def index_tlemmas(base: Path) -> dict[str, Path]:
     return index
 
 
-def _add_gen_args(parser: argparse.ArgumentParser) -> None:
-    """Add common T-lemma generation arguments to a subparser."""
-    parser.add_argument(
-        "--solver", choices=["sequential", "parallel"], default="parallel"
-    )
-    parser.add_argument(
-        "--projection", action=argparse.BooleanOptionalAction, default=False
-    )
-    parser.add_argument(
-        "--partition", action=argparse.BooleanOptionalAction, default=False
-    )
-    parser.add_argument(
-        "--parallel-divide-strategy",
-        choices=DIVIDE_STRATEGIES.keys(),
-        default="partial",
-        help="Divide strategy for parallel enumeration",
-    )
-    parser.add_argument(
-        "--partition-find-components",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-    )
-    parser.add_argument(
-        "--partition-share-tlemmas",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-    )
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="benchmark_controller.py")
     parser.add_argument("test_name", help="Output subdirectory name.")
     sub = parser.add_subparsers(dest="task", required=True)
 
     gen = sub.add_parser("tlemmas_gen", help="Generate T-lemmas.")
-    _add_gen_args(gen)
+    add_gen_args(gen)
 
     sub.add_parser("tlemmas_check", help="Check T-lemma correctness.")
 
@@ -258,7 +229,7 @@ def parse_args() -> argparse.Namespace:
         "tlemmas_gen_queries",
         help="Generate T-lemmas for instances with query formulas.",
     )
-    _add_gen_args(queries_gen)
+    add_gen_args(queries_gen)
 
     return parser.parse_args()
 
