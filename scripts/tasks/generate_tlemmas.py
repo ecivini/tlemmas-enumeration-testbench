@@ -44,6 +44,8 @@ def create_solver(
     projection: bool,
     partition: bool,
     divide_strategy: str,
+    partition_on_formula_components: bool,
+    share_tlemmas_between_partitions: bool,
     logger: dict[str, Any] | None = None,
 ) -> SMTEnumerator:
     """Create and configure an SMT solver for T-lemma enumeration."""
@@ -61,7 +63,12 @@ def create_solver(
         )
 
     if partition:
-        solver = WithPartitioningWrapper(solver, computation_logger=logger)
+        solver = WithPartitioningWrapper(
+            solver,
+            partition_on_formula_components=partition_on_formula_components,
+            share_tlemmas_between_partitions=share_tlemmas_between_partitions,
+            computation_logger=logger,
+        )
 
     return solver
 
@@ -108,21 +115,25 @@ def run_enumeration(
     return sat
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Generate T-lemmas for an SMT formula."
-    )
-
-    parser.add_argument("formula", type=Path, help="Path to the input SMT-LIB formula")
-    parser.add_argument("output_dir", type=Path, help="Base directory for output files")
-    parser.add_argument("procs", type=int, help="Number of parallel processes")
-    parser.add_argument("solver", choices=get_args(SOLVER), help="Base solver type")
-
+def add_gen_args(parser: argparse.ArgumentParser) -> None:
+    """Add common T-lemma generation arguments to a subparser."""
     parser.add_argument(
-        "--projection", action="store_true", help="Enable projection on theory atoms"
+        "--solver",
+        choices=get_args(SOLVER),
+        default="parallel",
+        help="Solver mode: sequential or parallel (default: parallel)",
     )
     parser.add_argument(
-        "--partition", action="store_true", help="Enable partitioning wrapper"
+        "--projection",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable projection on theory atoms (default: disabled)",
+    )
+    parser.add_argument(
+        "--partition",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable partitiong wrapper (default: disabled)",
     )
     parser.add_argument(
         "--parallel-divide-strategy",
@@ -131,11 +142,34 @@ def main() -> None:
         help="Divide strategy for parallel enumeration",
     )
     parser.add_argument(
+        "--partition-find-components",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Find relevant formula components when partitioning (default: disabled)",
+    )
+    parser.add_argument(
+        "--partition-share-tlemmas",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Share learned T-lemmas across partitions (default: disabled)",
+    )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Generate T-lemmas for an SMT formula."
+    )
+
+    parser.add_argument("formula", type=Path, help="Path to the input SMT-LIB formula")
+    parser.add_argument("output_dir", type=Path, help="Base directory for output files")
+    parser.add_argument("procs", type=int, help="Number of parallel processes")
+    parser.add_argument(
         "--queries-dir",
         type=Path,
         default=None,
         help="Directory of query formulas to add atoms from",
     )
+    add_gen_args(parser)
 
     args = parser.parse_args()
 
@@ -154,6 +188,8 @@ def main() -> None:
         projection=args.projection,
         partition=args.partition,
         divide_strategy=args.parallel_divide_strategy,
+        partition_on_formula_components=args.partition_find_components,
+        share_tlemmas_between_partitions=args.partition_share_tlemmas,
         logger=logger,
     )
 

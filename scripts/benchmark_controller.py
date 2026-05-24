@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Callable
 
 import yaml
-from tasks.generate_tlemmas import DIVIDE_STRATEGIES
+from tasks.generate_tlemmas import add_gen_args
 
 # Track active subprocesses per worker for cleanup on SIGTERM
 _active_procs: list[subprocess.Popen] = []
@@ -116,15 +116,20 @@ def task_gen(
         str(formula),
         str(output_dir / rel),
         config.allsmt_processes,
-        args.solver,
     ]
-
     if queries_dir is not None:
         cmd.extend(["--queries-dir", str(queries_dir)])
-    if args.projection:
-        cmd.append("--projection")
-    if args.partition:
-        cmd.append("--partition")
+
+    cmd.extend(["--solver", args.solver])
+    cmd.append(f"--{'' if args.projection else 'no-'}projection")
+    cmd.append(f"--{'' if args.partition else 'no-'}partition")
+    cmd.append(
+        f"--{'' if args.partition_find_components else 'no-'}partition-find-components"
+    )
+    cmd.append(
+        f"--{'' if args.partition_share_tlemmas else 'no-'}partition-share-tlemmas"
+    )
+
     if args.solver == "parallel":
         cmd.extend(["--parallel-divide-strategy", args.parallel_divide_strategy])
 
@@ -174,9 +179,7 @@ def get_pending_items(
         paths: Benchmark directories to scan.
         output_dir: Output directory for checking already-computed items.
         file_filter: Predicate applied to each .smt2 file; only matching files are kept.
-        output_path_fn: Computes the output path for skip checking. Defaults to
-            output_dir / f.relative_to(root).with_suffix("").
-
+        output_path_fn: Computes the output path for skip checking.
     Returns:
         List of (formula, benchmark_root) tuples.
     """
@@ -212,28 +215,13 @@ def index_tlemmas(base: Path) -> dict[str, Path]:
     return index
 
 
-def _add_gen_args(parser: argparse.ArgumentParser) -> None:
-    """Add common T-lemma generation arguments to a subparser."""
-    parser.add_argument(
-        "--solver", choices=["sequential", "parallel"], default="parallel"
-    )
-    parser.add_argument("--projection", action="store_true")
-    parser.add_argument("--partition", action="store_true")
-    parser.add_argument(
-        "--parallel-divide-strategy",
-        choices=DIVIDE_STRATEGIES.keys(),
-        default="partial",
-        help="Divide strategy for parallel enumeration",
-    )
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="benchmark_controller.py")
     parser.add_argument("test_name", help="Output subdirectory name.")
     sub = parser.add_subparsers(dest="task", required=True)
 
     gen = sub.add_parser("tlemmas_gen", help="Generate T-lemmas.")
-    _add_gen_args(gen)
+    add_gen_args(gen)
 
     sub.add_parser("tlemmas_check", help="Check T-lemma correctness.")
 
@@ -241,7 +229,7 @@ def parse_args() -> argparse.Namespace:
         "tlemmas_gen_queries",
         help="Generate T-lemmas for instances with query formulas.",
     )
-    _add_gen_args(queries_gen)
+    add_gen_args(queries_gen)
 
     return parser.parse_args()
 
