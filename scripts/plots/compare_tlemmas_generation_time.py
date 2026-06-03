@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 
@@ -15,7 +16,7 @@ RESULTS_TIME_KEY = "Total time"
 RESULTS_TLEMMAS_NUM_KEY = "T-Lemmas number"
 
 
-def extract_tlemmas_from_smt2(path: str) -> int:
+def extract_tlemmas_from_smt2(path: str) -> int | None:
     try:
         lemmas = read_smtlib(path)
         if lemmas.is_or():
@@ -54,6 +55,7 @@ def get_current_results_times(
                     continue
 
                 file_path = os.path.join(root, file)
+                print("parsing file", file_path)
                 with open(file_path, "r") as f:
                     data = json.load(f)
 
@@ -419,239 +421,114 @@ def linearize_data(h3: dict, h4: dict) -> dict:
     return result
 
 
-if __name__ == "__main__":
-    solver_x1 = "Baseline"
-    solver_x2 = "D&C"
-    solver_x3 = "D&C+Proj"
-    solver_x4 = "D&C+Proj+Part"
+def _load_run_data(run_dir: str) -> tuple[dict, dict, dict, dict]:
+    """Load benchmark metrics from one result directory."""
+    return get_current_results_times(None, [run_dir])
 
-    ###########################################################################
-    # RAND PROBLEMS
-    x1_times, x1_tlemmas, _, x1_median_tlemmas_sizes = get_current_results_times(
-        None,
-        [
-            "results/test_baseline/data",
-        ],
+
+def _align_common_keys(*datasets: dict) -> list[dict]:
+    """Keep only problems present in every dataset."""
+    if not datasets:
+        return []
+
+    common_keys = set(datasets[0].keys())
+    for data in datasets[1:]:
+        common_keys &= set(data.keys())
+
+    return [{key: data[key] for key in sorted(common_keys)} for data in datasets]
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Compare T-lemma generation results between two runs."
+    )
+    parser.add_argument("first_dir", help="First results/data directory")
+    parser.add_argument("second_dir", help="Second results/data directory")
+    parser.add_argument(
+        "--first-label",
+        default=None,
+        help="Label for first run (default: directory name)",
+    )
+    parser.add_argument(
+        "--second-label",
+        default=None,
+        help="Label for second run (default: directory name)",
+    )
+    parser.add_argument(
+        "--out-dir",
+        default=".",
+        help="Directory for generated plots",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = _parse_args()
+    first_label = args.first_label or os.path.basename(os.path.normpath(args.first_dir))
+    second_label = args.second_label or os.path.basename(
+        os.path.normpath(args.second_dir)
     )
 
     (
-        x2_times,
-        x2_tlemmas,
+        first_times,
+        first_tlemmas,
         _,
-        x2_median_tlemmas_sizes,
-    ) = get_current_results_times(
-        None,
-        [
-            "results/test_divconq/data",
-        ],
-    )
-
+        first_median_tlemmas_sizes,
+    ) = _load_run_data(args.first_dir)
     (
-        x3_times,
-        x3_tlemmas,
+        second_times,
+        second_tlemmas,
         _,
-        x3_median_tlemmas_sizes,
-    ) = get_current_results_times(
-        None,
-        [
-            "results/test_divconq_proj/data",
-        ],
+        second_median_tlemmas_sizes,
+    ) = _load_run_data(args.second_dir)
+
+    first_times, second_times = _align_common_keys(first_times, second_times)
+    first_tlemmas, second_tlemmas = _align_common_keys(first_tlemmas, second_tlemmas)
+    first_median_tlemmas_sizes, second_median_tlemmas_sizes = _align_common_keys(
+        first_median_tlemmas_sizes,
+        second_median_tlemmas_sizes,
     )
 
-    (
-        x4_times,
-        x4_tlemmas,
-        _,
-        x4_median_tlemmas_sizes,
-    ) = get_current_results_times(
-        None,
-        [
-            "results/test_divconq_proj_part/data",
-        ],
-    )
-
-    ###################################################################
-    ###################################################################
-    # BEGINNING OF THE PLOTS
-
-    # Scatter plots
-    create_scatter_plot(
-        x1_times,
-        x2_times,
-        x_label=solver_x2,
-        y_label=solver_x1,
-        out_path="seq_vs_par45_tlemmas_gen_time.pdf",
-    )
-    create_scatter_plot(
-        x1_times,
-        x3_times,
-        x_label=solver_x3,
-        y_label=solver_x1,
-        out_path="seq_vs_par45_proj_atoms_tlemmas_gen_time.pdf",
-    )
-    create_scatter_plot(
-        x1_times,
-        x4_times,
-        x_label=solver_x4,
-        y_label=solver_x1,
-        out_path="seq_vs_partition_tlemmas_gen_time.pdf",
-    )
+    os.makedirs(args.out_dir, exist_ok=True)
 
     create_scatter_plot(
-        x2_times,
-        x3_times,
-        x_label=solver_x3,
-        y_label=solver_x2,
-        out_path="par45_vs_par45_proj_atoms_tlemmas_gen_time.pdf",
-    )
-    create_scatter_plot(
-        x2_times,
-        x4_times,
-        x_label=solver_x4,
-        y_label=solver_x2,
-        out_path="par45_vs_partition_tlemmas_gen_time.pdf",
-    )
-
-    create_scatter_plot(
-        x3_times,
-        x4_times,
-        x_label=solver_x4,
-        y_label=solver_x3,
-        out_path="par45_proj_vs_partition_tlemmas_gen_time.pdf",
-    )
-
-    # T-lemmas number
-    create_tlemmas_scatter_plot(
-        x1_tlemmas,
-        x2_tlemmas,
-        solver_x1,
-        solver_x2,
-        out_path="seq_vs_par45_tlemmas_num.pdf",
+        first_times,
+        second_times,
+        x_label=second_label,
+        y_label=first_label,
+        out_path=os.path.join(
+            args.out_dir, f"{first_label}_vs_{second_label}_tlemmas_gen_time.pdf"
+        ),
     )
     create_tlemmas_scatter_plot(
-        x1_tlemmas,
-        x3_tlemmas,
-        solver_x1,
-        solver_x3,
-        out_path="seq_vs_par45_proj_atoms_tlemmas_num.pdf",
+        first_tlemmas,
+        second_tlemmas,
+        first_label,
+        second_label,
+        out_path=os.path.join(
+            args.out_dir, f"{first_label}_vs_{second_label}_tlemmas_num.pdf"
+        ),
     )
     create_tlemmas_scatter_plot(
-        x1_tlemmas,
-        x4_tlemmas,
-        solver_x1,
-        solver_x4,
-        out_path="seq_vs_partition_tlemmas_num.pdf",
-    )
-
-    create_tlemmas_scatter_plot(
-        x2_tlemmas,
-        x3_tlemmas,
-        solver_x2,
-        solver_x3,
-        out_path="par45_vs_par45_proj_atoms_tlemmas_num.pdf",
-    )
-    create_tlemmas_scatter_plot(
-        x2_tlemmas,
-        x4_tlemmas,
-        solver_x2,
-        solver_x4,
-        out_path="par45_vs_partition_tlemmas_num.pdf",
-    )
-
-    create_tlemmas_scatter_plot(
-        x3_tlemmas,
-        x4_tlemmas,
-        solver_x3,
-        solver_x4,
-        out_path="par45_proj_vs_partition_tlemmas_num.pdf",
-    )
-
-    # Tlemmas average sizes
-    # create_tlemmas_scatter_plot(
-    #     prev_avg_tlemmas_sizes,
-    #     current_avg_tlemmas_sizes,
-    #     solver_prev,
-    #     solver_curr,
-    #     out_path="seq_vs_par45_tlemmas_avg_size.pdf",
-    # )
-
-    # create_tlemmas_scatter_plot(
-    #     prev_avg_tlemmas_sizes,
-    #     x3_avg_tlemmas_sizes,
-    #     solver_prev,
-    #     solver_x3,
-    #     out_path="seq_vs_par45_proj_atoms_tlemmas_avg_size.pdf",
-    # )
-
-    # create_tlemmas_scatter_plot(
-    #     current_avg_tlemmas_sizes,
-    #     x3_avg_tlemmas_sizes,
-    #     solver_curr,
-    #     solver_x3,
-    #     out_path="par45_vs_par45_proj_atoms_tlemmas_avg_size.pdf",
-    # )
-
-    # Tlemmas median sizes
-    create_tlemmas_scatter_plot(
-        x1_median_tlemmas_sizes,
-        x2_median_tlemmas_sizes,
-        solver_x1,
-        solver_x2,
-        out_path="seq_vs_par45_tlemmas_median_size.pdf",
+        first_median_tlemmas_sizes,
+        second_median_tlemmas_sizes,
+        first_label,
+        second_label,
+        out_path=os.path.join(
+            args.out_dir, f"{first_label}_vs_{second_label}_tlemmas_median_size.pdf"
+        ),
         log_scale=False,
     )
-    create_tlemmas_scatter_plot(
-        x1_median_tlemmas_sizes,
-        x3_median_tlemmas_sizes,
-        solver_x1,
-        solver_x3,
-        out_path="seq_vs_par45_proj_atoms_tlemmas_median_size.pdf",
-        log_scale=False,
-    )
-    create_tlemmas_scatter_plot(
-        x1_median_tlemmas_sizes,
-        x4_median_tlemmas_sizes,
-        solver_x1,
-        solver_x4,
-        out_path="seq_vs_partition_tlemmas_median_size.pdf",
-        log_scale=False,
-    )
-
-    create_tlemmas_scatter_plot(
-        x2_median_tlemmas_sizes,
-        x3_median_tlemmas_sizes,
-        solver_x2,
-        solver_x3,
-        out_path="par45_vs_par45_proj_atoms_tlemmas_median_size.pdf",
-        log_scale=False,
-    )
-    create_tlemmas_scatter_plot(
-        x2_median_tlemmas_sizes,
-        x4_median_tlemmas_sizes,
-        solver_x2,
-        solver_x4,
-        out_path="par45_vs_partition_tlemmas_median_size.pdf",
-        log_scale=False,
-    )
-
-    create_tlemmas_scatter_plot(
-        x3_median_tlemmas_sizes,
-        x4_median_tlemmas_sizes,
-        solver_x3,
-        solver_x4,
-        out_path="par45_proj_vs_partition_tlemmas_median_size.pdf",
-        log_scale=False,
-    )
-
-    # Cactus plots
     create_cactus_plot(
-        x1_times,
-        x2_times,
-        x1_label=solver_x1,
-        x2_label=solver_x2,
-        third=x3_times,
-        x3_label=solver_x3,
-        fourth=x4_times,
-        x4_label=solver_x4,
-        out_path="cactus_seq_vs_par45_vs_par45_proj_atoms_vs_partition_tlemmas_gen_time.pdf",
+        first_times,
+        second_times,
+        x1_label=first_label,
+        x2_label=second_label,
+        out_path=os.path.join(
+            args.out_dir, f"cactus_{first_label}_vs_{second_label}.pdf"
+        ),
     )
+
+
+if __name__ == "__main__":
+    main()
