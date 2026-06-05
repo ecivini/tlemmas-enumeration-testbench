@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import random
 import resource
 import signal
 import subprocess
@@ -14,6 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 import yaml
+from natsort import natsorted
 from tasks.generate_tlemmas import add_gen_args
 
 # Track active subprocesses per worker for cleanup on SIGTERM
@@ -197,7 +197,7 @@ def get_pending_items(
                 continue
             items.append((f, p))
 
-    random.shuffle(items)
+    items = natsorted(items)
     return items
 
 
