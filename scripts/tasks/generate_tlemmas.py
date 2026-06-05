@@ -8,21 +8,22 @@ import time
 from pathlib import Path
 from typing import Any, Literal, cast, get_args
 
-from enumerators.solvers.mathsat_partial_extended import (
+from enumerators.solvers import (
     DivideByPartialAllSMTStrategy,
     DivideByProjectedEnumerationStrategy,
-    MathSATExtendedPartialEnumerator,
+    DivideStrategy,
+    MathSATDivideAndConquerEnumerator,
+    MathSATTotalEnumerator,
+    SMTEnumerator,
+    WithPartitioningWrapper,
 )
-from enumerators.solvers.mathsat_total import MathSATTotalEnumerator
-from enumerators.solvers.solver import SMTEnumerator
-from enumerators.solvers.with_partitioning import WithPartitioningWrapper
 from enumerators.walkers.normalizer import NormalizerWalker
 from pysmt.fnode import FNode
 from pysmt.shortcuts import And, read_smtlib, write_smtlib
 
-DIVIDE_STRATEGIES: dict[str, type] = {
-    "partial": DivideByPartialAllSMTStrategy,
-    "projection": DivideByProjectedEnumerationStrategy,
+DIVIDE_STRATEGIES: dict[str, DivideStrategy] = {
+    "partial": DivideByPartialAllSMTStrategy(),
+    "projection": DivideByProjectedEnumerationStrategy(),
 }
 
 SOLVER = Literal["sequential", "parallel"]
@@ -55,7 +56,7 @@ def create_solver(
             computation_logger=logger,
         )
     else:
-        solver = MathSATExtendedPartialEnumerator(
+        solver = MathSATDivideAndConquerEnumerator(
             project_on_theory_atoms=projection,
             computation_logger=logger,
             parallel_procs=procs,
