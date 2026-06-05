@@ -104,7 +104,7 @@ def run_enumeration(
 
     logger.update(
         {
-            "T-Lemmas number": len(tlemmas),
+            # "T-Lemmas number": len(tlemmas),
             "Satisfiable": sat,
             "Total time": total_time,
         }
