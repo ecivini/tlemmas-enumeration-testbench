@@ -230,3 +230,4 @@ tabularAllSAT
 # Numeric planning benchmark artifacts
 data/benchmark/numeric-planning/*/instances/
 transition*.smt2
+uv.lock
