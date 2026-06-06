@@ -333,6 +333,18 @@ def create_scatter_plot(
     return handles, labels
 
 
+def save_legend_plot(
+    handles: list,
+    labels: list,
+    out_path: str,
+) -> None:
+    fig = plt.figure(figsize=(8, 2))
+    fig.legend(handles, labels, fontsize=14, ncol=3, loc="center")
+    plt.tight_layout()
+    plt.savefig(out_path)
+    plt.close(fig)
+
+
 def create_tlemmas_scatter_plot(
     first: dict,
     current: dict,
@@ -508,7 +520,7 @@ def main() -> None:
 
     os.makedirs(args.out_dir, exist_ok=True)
 
-    create_scatter_plot(
+    handles, labels = create_scatter_plot(
         first_times,
         second_times,
         x_label=second_label,
@@ -516,6 +528,13 @@ def main() -> None:
         timeout=args.timeout,
         out_path=os.path.join(
             args.out_dir, f"{first_label}_vs_{second_label}_tlemmas_gen_time.pdf"
+        ),
+    )
+    save_legend_plot(
+        handles,
+        labels,
+        out_path=os.path.join(
+            args.out_dir, f"{first_label}_vs_{second_label}_legend.pdf"
         ),
     )
     create_tlemmas_scatter_plot(
