@@ -191,43 +191,83 @@ def create_scatter_plot(
     timeout: float = 3600.0,
     out_path: str = "scatter.pdf",
 ):
-    first_times = []
-    current_times = []
+    neither_x, neither_y = [], []
+    one_timeout_x, one_timeout_y = [], []
+    both_timeout_x, both_timeout_y = [], []
     first_timeouts = 0
     current_timeouts = 0
-
     first_under_lower_threshold = 0
     current_under_lower_threshold = 0
 
     for problem in current.keys():
-        first_times.append(first[problem])
-        current_times.append(current[problem])
+        first_val = first[problem]
+        current_val = current[problem]
 
-        if first[problem] >= timeout:
+        first_is_timeout = first_val >= timeout
+        current_is_timeout = current_val >= timeout
+
+        if first_is_timeout:
             first_timeouts += 1
-        elif first[problem] <= lower_threshold:
+        elif first_val <= lower_threshold:
             first_under_lower_threshold += 1
 
-        if current[problem] >= timeout:
+        if current_is_timeout:
             current_timeouts += 1
-        elif current[problem] <= lower_threshold:
+        elif current_val <= lower_threshold:
             current_under_lower_threshold += 1
+
+        if first_is_timeout and current_is_timeout:
+            both_timeout_x.append(timeout)
+            both_timeout_y.append(timeout)
+        elif first_is_timeout or current_is_timeout:
+            one_timeout_x.append(current_val)
+            one_timeout_y.append(first_val)
+        else:
+            neither_x.append(current_val)
+            neither_y.append(first_val)
 
     linthresh = 10
 
     # Create figure
     fig, ax = plt.subplots(figsize=(7, 7))
 
-    # Scatter plot
+    # Scatter plot - non-timeouts
     ax.scatter(
-        x=current_times,
-        y=first_times,
+        x=neither_x,
+        y=neither_y,
         color="lightskyblue",
         edgecolors="black",
         s=100,
         zorder=4,
         alpha=1,
         marker="X",
+        label="Completed",
+    )
+
+    # Scatter plot - one timeout
+    ax.scatter(
+        x=one_timeout_x,
+        y=one_timeout_y,
+        color="orange",
+        edgecolors="black",
+        s=100,
+        zorder=4,
+        alpha=1,
+        marker="^",
+        label="One timed out",
+    )
+
+    # Scatter plot - both timed out
+    ax.scatter(
+        x=both_timeout_x,
+        y=both_timeout_y,
+        color="red",
+        edgecolors="black",
+        s=100,
+        zorder=4,
+        alpha=1,
+        marker="s",
+        label="Both timed out",
     )
 
     # Reference line y = x
@@ -241,11 +281,7 @@ def create_scatter_plot(
     )
 
     # Timeout lines (dashed)
-    ax.axvline(
-        timeout,
-        linestyle="--",
-        color="gray",
-    )
+    ax.axvline(timeout, linestyle="--", color="gray")
 
     print(
         f"\n{out_path}\n"
@@ -253,19 +289,20 @@ def create_scatter_plot(
         f"| below {lower_threshold} sec: {current_under_lower_threshold}"
     )
 
-    ax.axhline(
-        timeout,
-        linestyle="--",
-        color="gray",
-        label=(
-            f"{y_label} timeouts: {first_timeouts} "
-            f"| below {lower_threshold} sec: {first_under_lower_threshold}"
-        ),
-    )
+    ax.axhline(timeout, linestyle="--", color="gray")
+
+    both_timeouts = len(both_timeout_x)
+    one_timeout_count = len(one_timeout_x)
+    unique_timeouts = both_timeouts + one_timeout_count
 
     print(
         f"{y_label} timeouts: {first_timeouts} "
         f"| below {lower_threshold} sec: {first_under_lower_threshold}"
+    )
+    print(
+        f"Both timed out: {both_timeouts} | "
+        f"Exactly one timed out: {one_timeout_count} | "
+        f"Unique problems with at least one timeout: {unique_timeouts}"
     )
 
     # Set symlog scale
@@ -286,12 +323,14 @@ def create_scatter_plot(
     # Grid
     ax.grid(True, which="both", linestyle=":", linewidth=0.5)
 
-    # Legend
-    # ax.legend(loc="lower right")
+    # Collect legend handles/labels for external legend plot
+    handles, labels = ax.get_legend_handles_labels()
 
-    # Show plot
+    # Show plot (without legend)
     plt.tight_layout()
     plt.savefig(out_path)
+
+    return handles, labels
 
 
 def create_tlemmas_scatter_plot(
