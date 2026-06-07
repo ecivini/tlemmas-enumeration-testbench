@@ -109,72 +109,43 @@ def get_tlemmas_from_logs(logs_path: str) -> list[FNode]:
 
 
 def create_cactus_plot(
-    first: dict,
-    current: dict,
-    x1_label: str,
-    x2_label: str,
-    third: dict | None = None,
-    x3_label: str | None = None,
-    fourth: dict | None = None,
-    x4_label: str | None = None,
+    *datasets: tuple[dict, str],
     show_vbs: bool = False,
     timeout: float = 3600.0,
     out_path: str = "cactus.pdf",
 ) -> None:
-    first_times = []
-    current_times = []
-    third_times = []
-    fourth_times = []
-    vbs_times = []
-    for problem in current:
-        first_time = first[problem] if first[problem] <= timeout else timeout
-        current_time = current[problem] if current[problem] <= timeout else timeout
+    MARKERS = ["o", "^", "s", "D", "v", "<", ">", "p", "*", "h"]
 
-        third_time = None
-        if third is not None:
-            third_time = third[problem] if third[problem] <= timeout else timeout
+    assert len(datasets) >= 2, "Need at least 2 datasets"
 
-        fourth_time = None
-        if fourth is not None:
-            fourth_time = fourth[problem] if fourth[problem] <= timeout else timeout
+    # Verify all dicts share same keys
+    keys = list(datasets[0][0].keys())
+    for data, _ in datasets[1:]:
+        assert data.keys() == datasets[0][0].keys(), (
+            "All data dicts must share same keys"
+        )
 
-        vbs_time = min(first_time, current_time)
-        if third_time:
-            vbs_time = min(vbs_time, third_time)
-        if fourth_time:
-            vbs_time = min(vbs_time, fourth_time)
+    # Clamp & sort per dataset
+    sorted_data = []
+    for data, label in datasets:
+        times = sorted(min(data[k], timeout) for k in keys)
+        sorted_data.append((times, label))
 
-        first_times.append(first_time)
-        current_times.append(current_time)
-        if third_time:
-            third_times.append(third_time)
-        if fourth_time:
-            fourth_times.append(fourth_time)
-
-        vbs_times.append(vbs_time)
-
-    first_times.sort()
-    current_times.sort()
-    third_times.sort()
-    fourth_times.sort()
-    vbs_times.sort()
-
-    x1 = np.arange(1, len(first_times) + 1)
-    x2 = np.arange(1, len(current_times) + 1)
-    x3 = np.arange(1, len(third_times) + 1)
-    x4 = np.arange(1, len(fourth_times) + 1)
-    x5 = np.arange(1, len(vbs_times) + 1)
+    # VBS
+    vbs_times = None
+    if show_vbs:
+        raw = [min(data[k] for data, _ in datasets) for k in keys]
+        vbs_times = sorted(min(t, timeout) for t in raw)
 
     # Plot
     plt.figure(figsize=(9, 6))
-    plt.plot(x1, first_times, label=x1_label, marker="o", markersize=2)
-    plt.plot(x2, current_times, label=x2_label, marker="^", markersize=2)
-    if len(x3) > 0:
-        plt.plot(x3, third_times, label=x3_label, marker="+", markersize=2)
-    if len(x4) > 0:
-        plt.plot(x4, fourth_times, label=x4_label, marker="+", markersize=2)
-    if show_vbs:
-        plt.plot(x5, vbs_times, label="Virtual Best", marker="s", markersize=1)
+    for i, (times, label) in enumerate(sorted_data):
+        x = np.arange(1, len(times) + 1)
+        plt.plot(x, times, label=label, marker=MARKERS[i % len(MARKERS)], markersize=2)
+
+    if show_vbs and vbs_times:
+        x = np.arange(1, len(vbs_times) + 1)
+        plt.plot(x, vbs_times, label="Virtual Best", marker="s", markersize=1)
 
     plt.xlabel("Number of problems solved", fontsize=24)
     plt.ylabel("Time (s)", fontsize=24)
@@ -561,10 +532,8 @@ def main() -> None:
         log_scale=False,
     )
     create_cactus_plot(
-        first_times,
-        second_times,
-        x1_label=first_label,
-        x2_label=second_label,
+        (first_times, first_label),
+        (second_times, second_label),
         timeout=args.timeout,
         out_path=os.path.join(
             args.out_dir, f"cactus_{first_label}_vs_{second_label}.pdf"
