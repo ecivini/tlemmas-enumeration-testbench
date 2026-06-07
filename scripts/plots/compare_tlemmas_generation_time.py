@@ -80,10 +80,7 @@ def get_clause_size(formula: FNode) -> int:
 
 
 def compute_tlemmas_stats(tlemmas: list[FNode]) -> tuple[float, float]:
-    literals_num_list = []
-    for lemma in tlemmas:
-        lemma_size = get_clause_size(lemma)
-        literals_num_list.append(lemma_size)
+    literals_num_list = [get_clause_size(lemma) for lemma in tlemmas]
 
     avg_lemma_size = statistics.mean(literals_num_list)
     median_lemma_size = statistics.median(literals_num_list)
@@ -99,7 +96,7 @@ def get_tlemmas_from_logs(logs_path: str) -> list[FNode]:
         if f.endswith(".smt2") and os.path.isfile(os.path.join(dir_name, f))
     ]
     # there should be only one file
-    assert len(files) == 1, "multiple files in {}: {}".format(dir_name, files)
+    assert len(files) == 1, "multiple .smt2 files in {}: {}".format(dir_name, files)
     tlemmas_path = files[0]
 
     tlemmas_and = read_formula(tlemmas_path)
