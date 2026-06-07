@@ -43,7 +43,14 @@ def get_current_results_times(
                 with open(file_path, "r") as f:
                     data = json.load(f)
 
-                problem_name = os.path.dirname(file_path).split(os.sep)[-1]
+                problem_name: str | None = None
+                for base_dir in paths:
+                    if file_path.startswith(base_dir):
+                        problem_name = os.path.relpath(
+                            os.path.dirname(file_path), base_dir
+                        )
+                        break
+                assert problem_name is not None
                 times[problem_name] = data[RESULTS_TIME_KEY]
                 tlemmas[problem_name] = data[RESULTS_TLEMMAS_NUM_KEY]
 
