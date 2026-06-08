@@ -19,11 +19,11 @@ def get_current_results_times(
     paths: list[str],
     timeout: float,
     benchmark_paths: list[str] | None = None,
-) -> tuple[dict, dict, dict, dict]:
-    times = {}
-    tlemmas = {}
-    avgs = {}
-    medians = {}
+) -> tuple[dict[str, float], dict[str, int], dict[str, float], dict[str, float]]:
+    times: dict[str, float] = {}
+    tlemmas: dict[str, int] = {}
+    avgs: dict[str, float] = {}
+    medians: dict[str, float] = {}
 
     for base_dir in paths:
         for root, _, files in os.walk(base_dir):
@@ -40,7 +40,6 @@ def get_current_results_times(
                 times[problem_name] = data[RESULTS_TIME_KEY]
                 tlemmas[problem_name] = data[RESULTS_TLEMMAS_NUM_KEY]
 
-                # extracts stats from the lemmas
                 pysmt.environment.push_env()
                 tlemmas_fnode = get_tlemmas_from_logs(file_path)
                 avg, med = compute_tlemmas_stats(tlemmas_fnode)
@@ -49,6 +48,7 @@ def get_current_results_times(
 
                 avgs[problem_name] = avg
                 medians[problem_name] = med
+
     if err_file:
         with open(err_file, "r") as f:
             errors = json.load(f)
@@ -114,7 +114,7 @@ def get_tlemmas_from_logs(logs_path: str) -> list[FNode]:
 
 
 def create_cactus_plot(
-    *datasets: tuple[dict, str],
+    *datasets: tuple[dict[str, int] | dict[str, float], str],
     show_vbs: bool = False,
     timeout: float = 3600.0,
     out_path: str = "cactus.pdf",
@@ -163,154 +163,122 @@ def create_cactus_plot(
 
 
 def create_scatter_plot(
-    first: dict,
-    current: dict,
+    x_data: dict,
     x_label: str,
+    y_data: dict,
     y_label: str,
     lower_threshold: float = 1.0,
-    timeout: float = 3600.0,
+    timeout: float | None = None,
+    label_suffix: str = "",
+    log_scale: bool = True,
     out_path: str = "scatter.pdf",
-):
-    neither_x, neither_y = [], []
-    one_timeout_x, one_timeout_y = [], []
-    both_timeout_x, both_timeout_y = [], []
-    first_timeouts = 0
-    current_timeouts = 0
-    first_under_lower_threshold = 0
-    current_under_lower_threshold = 0
+) -> None:
+    common_keys = sorted(set(x_data.keys()) & set(y_data.keys()))
+    if not common_keys:
+        print("No data for plot:", out_path)
+        return
 
-    for problem in current.keys():
-        first_val = first[problem]
-        current_val = current[problem]
+    completed_x, completed_y = [], []
+    timeout_x, timeout_y = [], []
+    x_timeouts = 0
+    y_timeouts = 0
+    x_below = 0
+    y_below = 0
 
-        first_is_timeout = first_val >= timeout
-        current_is_timeout = current_val >= timeout
+    for key in common_keys:
+        xv = x_data[key]
+        yv = y_data[key]
 
-        if first_is_timeout:
-            first_timeouts += 1
-        elif first_val <= lower_threshold:
-            first_under_lower_threshold += 1
+        if timeout is not None:
+            x_is_timeout = xv >= timeout
+            y_is_timeout = yv >= timeout
+            if x_is_timeout or y_is_timeout:
+                if x_is_timeout:
+                    x_timeouts += 1
+                if y_is_timeout:
+                    y_timeouts += 1
+                timeout_x.append(timeout if x_is_timeout else xv)
+                timeout_y.append(timeout if y_is_timeout else yv)
+                continue
+            if xv <= lower_threshold:
+                x_below += 1
+            if yv <= lower_threshold:
+                y_below += 1
+        completed_x.append(xv)
+        completed_y.append(yv)
 
-        if current_is_timeout:
-            current_timeouts += 1
-        elif current_val <= lower_threshold:
-            current_under_lower_threshold += 1
+    plot_max = (
+        timeout if timeout is not None else max(max(completed_x), max(completed_y))
+    )
 
-        if first_is_timeout and current_is_timeout:
-            both_timeout_x.append(timeout)
-            both_timeout_y.append(timeout)
-        elif first_is_timeout or current_is_timeout:
-            one_timeout_x.append(current_val)
-            one_timeout_y.append(first_val)
-        else:
-            neither_x.append(current_val)
-            neither_y.append(first_val)
+    _, ax = plt.subplots(figsize=(7, 7))
 
-    linthresh = 10
-
-    # Create figure
-    fig, ax = plt.subplots(figsize=(7, 7))
-
-    # Scatter plot - non-timeouts
     ax.scatter(
-        x=neither_x,
-        y=neither_y,
+        x=completed_x,
+        y=completed_y,
         color="lightskyblue",
         edgecolors="black",
         s=100,
         zorder=4,
         alpha=1,
         marker="X",
-        label="Completed",
     )
 
-    # Scatter plot - one timeout
-    ax.scatter(
-        x=one_timeout_x,
-        y=one_timeout_y,
-        color="orange",
-        edgecolors="black",
-        s=100,
-        zorder=4,
-        alpha=1,
-        marker="^",
-        label="One timed out",
-    )
+    if timeout is not None and timeout_x:
+        ax.scatter(
+            x=timeout_x,
+            y=timeout_y,
+            color="red",
+            edgecolors="black",
+            s=100,
+            zorder=4,
+            alpha=1,
+            marker="s",
+        )
 
-    # Scatter plot - both timed out
-    ax.scatter(
-        x=both_timeout_x,
-        y=both_timeout_y,
-        color="red",
-        edgecolors="black",
-        s=100,
-        zorder=4,
-        alpha=1,
-        marker="s",
-        label="Both timed out",
-    )
-
-    # Reference line y = x
     ax.plot(
-        [1e-2, timeout],
-        [1e-2, timeout],
+        [1e-2, plot_max],
+        [1e-2, plot_max],
         label="y = x",
         zorder=2,
         color="gray",
         linestyle="--",
     )
 
-    # Timeout lines (dashed)
-    ax.axvline(timeout, linestyle="--", color="gray")
+    if timeout is not None:
+        ax.axvline(timeout, linestyle="--", color="gray")
+        ax.axhline(timeout, linestyle="--", color="gray")
 
-    print(
-        f"\n{out_path}\n"
-        f"{x_label} timeouts: {current_timeouts}"
-        f"| below {lower_threshold} sec: {current_under_lower_threshold}"
-    )
+    if timeout is not None:
+        print(
+            f"\n{out_path}\n"
+            f"{x_label} timeouts: {x_timeouts}"
+            f"| below {lower_threshold} sec: {x_below}"
+        )
+        print(
+            f"{y_label} timeouts: {y_timeouts} | below {lower_threshold} sec: {y_below}"
+        )
+        print(f"Timed out problems: {len(timeout_x)}")
 
-    ax.axhline(timeout, linestyle="--", color="gray")
-
-    both_timeouts = len(both_timeout_x)
-    one_timeout_count = len(one_timeout_x)
-    unique_timeouts = both_timeouts + one_timeout_count
-
-    print(
-        f"{y_label} timeouts: {first_timeouts} "
-        f"| below {lower_threshold} sec: {first_under_lower_threshold}"
-    )
-    print(
-        f"Both timed out: {both_timeouts} | "
-        f"Exactly one timed out: {one_timeout_count} | "
-        f"Unique problems with at least one timeout: {unique_timeouts}"
-    )
-
-    # Set symlog scale
-    ax.set_xscale("symlog", linthresh=linthresh)
-    ax.set_yscale("symlog", linthresh=linthresh)
+    if log_scale:
+        ax.set_xscale("symlog", linthresh=10)
+        ax.set_yscale("symlog", linthresh=10)
+    else:
+        ax.set_xscale("linear")
+        ax.set_yscale("linear")
     ax.set_aspect("equal")
 
-    # Set limits
-    ax.set_xlim(left=1e-2, right=timeout * 1.1)
-    ax.set_ylim(bottom=1e-2, top=timeout * 1.1)
+    ax.set_xlim(left=1e-2, right=plot_max * 1.1)
+    ax.set_ylim(bottom=1e-2, top=plot_max * 1.1)
 
-    # Labels
-    ax.set_xlabel(f"{x_label} times", fontsize=24)
-    ax.set_ylabel(f"{y_label} times", fontsize=24)
+    ax.set_xlabel(f"{x_label}{label_suffix}", fontsize=24)
+    ax.set_ylabel(f"{y_label}{label_suffix}", fontsize=24)
     plt.xticks(fontsize=18)
     plt.yticks(fontsize=18)
-
-    # Grid
     ax.grid(True, which="both", linestyle=":", linewidth=0.5)
 
-    # Collect legend handles/labels for external legend plot
-    handles, labels = ax.get_legend_handles_labels()
-
-    # Show plot (without legend)
     plt.tight_layout()
     plt.savefig(out_path)
-
-    return handles, labels
 
 
 def save_legend_plot(
@@ -325,107 +293,11 @@ def save_legend_plot(
     plt.close(fig)
 
 
-def create_tlemmas_scatter_plot(
-    first: dict,
-    current: dict,
-    first_label: str,
-    curr_label: str,
-    out_path: str = "scatter_num.pdf",
-    log_scale: bool = True,
-):
-    first_times = []
-    current_times = []
-
-    for problem in current.keys():
-        if problem not in first:
-            continue
-
-        first_times.append(first[problem])
-        current_times.append(current[problem])
-
-    if not first_times or not current_times:
-        print("No data for plot:", out_path)
-        return
-
-    timeout = max(max(first_times), max(current_times))
-
-    # Create figure
-    fig, ax = plt.subplots(figsize=(7, 7))
-
-    # Scatter plot
-    ax.scatter(
-        x=current_times,
-        y=first_times,
-        color="lightskyblue",
-        edgecolors="black",
-        s=100,
-        zorder=4,
-        alpha=1,
-        marker="X",
-    )
-
-    # Reference line y = x
-    ax.plot(
-        [1e-2, timeout],
-        [1e-2, timeout],
-        label="y = x",
-        zorder=2,
-        color="gray",
-        linestyle="--",
-    )
-
-    # Timeout lines (dashed)
-    # ax.axvline(timeout, linestyle="--", color="gray")
-    # ax.axhline(timeout, linestyle="--", color="gray")
-
-    # Set symlog scale
-    if log_scale:
-        ax.set_xscale("symlog")
-        ax.set_yscale("symlog")
-    else:
-        ax.set_xscale("linear")
-        ax.set_yscale("linear")
-    ax.set_aspect("equal")
-
-    # Set limits
-    ax.set_xlim(left=1e-2, right=timeout * 1.2)
-    ax.set_ylim(bottom=1e-2, top=timeout * 1.2)
-
-    # Labels
-    ax.set_xlabel(f"{curr_label}", fontsize=24)
-    ax.set_ylabel(f"{first_label}", fontsize=24)
-
-    # Grid
-    ax.grid(True, which="both", linestyle=":", linewidth=0.5)
-
-    # Legend
-    # ax.legend()
-    plt.xticks(fontsize=18)
-    plt.yticks(fontsize=18)
-
-    # Show plot
-    plt.tight_layout()
-    plt.savefig(out_path)
-
-
-def linearize_data(h3: dict, h4: dict) -> dict:
-    # rename all fields in h3 from x_y to h3_x_y:
-    result = {}
-    for key in h3:
-        result[f"h3_{key}"] = h3[key]
-
-    # Add h4 with the same adjusted format
-    for key in h4:
-        result[f"h4_{key}"] = h4[key]
-
-    return result
-
-
 def _load_run_data(
     run_dir: str,
     timeout: float,
     benchmark_paths: list[str] | None = None,
-) -> tuple[dict, dict, dict, dict]:
+) -> tuple[dict[str, float], dict[str, int], dict[str, float], dict[str, float]]:
     """Load benchmark metrics from one result directory."""
     err_file = os.path.join(run_dir, "errors.json")
     if not os.path.exists(err_file):
@@ -453,21 +325,9 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("first_dir", help="First results/data directory")
     parser.add_argument("second_dir", help="Second results/data directory")
-    parser.add_argument(
-        "--first-label",
-        default=None,
-        help="Label for first run (default: directory name)",
-    )
-    parser.add_argument(
-        "--second-label",
-        default=None,
-        help="Label for second run (default: directory name)",
-    )
-    parser.add_argument(
-        "--out-dir",
-        default=".",
-        help="Directory for generated plots",
-    )
+    parser.add_argument("--first-label", required=True, help="Label for first run")
+    parser.add_argument("--second-label", required=True, help="Label for second run")
+    parser.add_argument("--out-dir", default=".", help="Directory for generated plots")
     parser.add_argument(
         "--timeout",
         type=float,
@@ -491,20 +351,10 @@ def main() -> None:
         os.path.normpath(args.second_dir)
     )
 
-    (
-        first_times,
-        first_tlemmas,
-        _,
-        first_median_tlemmas_sizes,
-    ) = _load_run_data(
+    first_times, first_tlemmas, _, first_median_tlemmas_sizes = _load_run_data(
         args.first_dir, timeout=args.timeout, benchmark_paths=args.benchmark_dirs
     )
-    (
-        second_times,
-        second_tlemmas,
-        _,
-        second_median_tlemmas_sizes,
-    ) = _load_run_data(
+    second_times, second_tlemmas, _, second_median_tlemmas_sizes = _load_run_data(
         args.second_dir, timeout=args.timeout, benchmark_paths=args.benchmark_dirs
     )
 
@@ -517,48 +367,54 @@ def main() -> None:
 
     os.makedirs(args.out_dir, exist_ok=True)
 
-    handles, labels = create_scatter_plot(
-        first_times,
-        second_times,
-        x_label=second_label,
-        y_label=first_label,
-        timeout=args.timeout,
-        out_path=os.path.join(
-            args.out_dir, f"{first_label}_vs_{second_label}_tlemmas_gen_time.pdf"
+    scatter_configs = [
+        (
+            first_times,
+            first_label,
+            second_times,
+            second_label,
+            " (time)",
+            True,
+            "gen_time",
         ),
-    )
-    save_legend_plot(
-        handles,
-        labels,
-        out_path=os.path.join(
-            args.out_dir, f"{first_label}_vs_{second_label}_legend.pdf"
+        (second_tlemmas, second_label, first_tlemmas, first_label, " (#)", True, "num"),
+        (
+            first_median_tlemmas_sizes,
+            first_label,
+            second_median_tlemmas_sizes,
+            second_label,
+            " (size)",
+            False,
+            "median_size",
         ),
-    )
-    create_tlemmas_scatter_plot(
-        first_tlemmas,
-        second_tlemmas,
-        first_label,
-        second_label,
-        out_path=os.path.join(
-            args.out_dir, f"{first_label}_vs_{second_label}_tlemmas_num.pdf"
-        ),
-    )
-    create_tlemmas_scatter_plot(
-        first_median_tlemmas_sizes,
-        second_median_tlemmas_sizes,
-        first_label,
-        second_label,
-        out_path=os.path.join(
-            args.out_dir, f"{first_label}_vs_{second_label}_tlemmas_median_size.pdf"
-        ),
-        log_scale=False,
-    )
+    ]
+    for x_data, x_label, y_data, y_label, suffix, log, suffix_fn in scatter_configs:
+        create_scatter_plot(
+            x_data,
+            x_label,
+            y_data,
+            y_label,
+            timeout=args.timeout,
+            label_suffix=suffix,
+            log_scale=log,
+            out_path=os.path.join(
+                args.out_dir, f"{first_label}_vs_{second_label}_tlemmas_{suffix_fn}.pdf"
+            ),
+        )
     create_cactus_plot(
         (first_times, first_label),
         (second_times, second_label),
         timeout=args.timeout,
         out_path=os.path.join(
             args.out_dir, f"cactus_{first_label}_vs_{second_label}.pdf"
+        ),
+    )
+    handles, labels = plt.gca().get_legend_handles_labels()
+    save_legend_plot(
+        handles,
+        labels,
+        out_path=os.path.join(
+            args.out_dir, f"{first_label}_vs_{second_label}_legend.pdf"
         ),
     )
 
