@@ -220,7 +220,7 @@ def create_scatter_plot(
         edgecolors="black",
         s=100,
         zorder=4,
-        alpha=1,
+        alpha=0.5,
         marker="X",
     )
 
@@ -232,8 +232,8 @@ def create_scatter_plot(
             edgecolors="black",
             s=100,
             zorder=4,
-            alpha=1,
-            marker="s",
+            alpha=0.5,
+            marker="X",
         )
 
     ax.plot(
@@ -376,25 +376,36 @@ def main() -> None:
             " (time)",
             True,
             "gen_time",
+            args.timeout,
         ),
-        (second_tlemmas, second_label, first_tlemmas, first_label, " (#)", True, "num"),
+        (
+            first_tlemmas,
+            first_label,
+            second_tlemmas,
+            second_label,
+            " (# T-lemmas)",
+            True,
+            "num",
+            None,
+        ),
         (
             first_median_tlemmas_sizes,
             first_label,
             second_median_tlemmas_sizes,
             second_label,
-            " (size)",
+            " (median T-lemma size)",
             False,
             "median_size",
+            None,
         ),
     ]
-    for x_data, x_label, y_data, y_label, suffix, log, suffix_fn in scatter_configs:
+    for x_data, x_label, y_data, y_label, suffix, log, suffix_fn, to in scatter_configs:
         create_scatter_plot(
             x_data,
             x_label,
             y_data,
             y_label,
-            timeout=args.timeout,
+            timeout=to,
             label_suffix=suffix,
             log_scale=log,
             out_path=os.path.join(
