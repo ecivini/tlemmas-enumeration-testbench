@@ -15,22 +15,15 @@ RESULTS_TLEMMAS_NUM_KEY = "Lemmas"
 
 
 def get_current_results_times(
-    err_file: str | None, paths: list[str], timeout: float
+    err_file: str | None,
+    paths: list[str],
+    timeout: float,
+    benchmark_paths: list[str] | None = None,
 ) -> tuple[dict, dict, dict, dict]:
     times = {}
     tlemmas = {}
     avgs = {}
     medians = {}
-
-    if err_file:
-        with open(err_file, "r") as f:
-            errors = json.load(f)
-            for problem, reason in errors.items():
-                if reason == "timeout":
-                    key_name = problem.split(os.sep)[-1].replace(".smt2", "")
-                    times[key_name] = timeout
-                else:
-                    raise ValueError("Unexpected error reason in data:", reason)
 
     for base_dir in paths:
         for root, _, files in os.walk(base_dir):
@@ -43,14 +36,7 @@ def get_current_results_times(
                 with open(file_path, "r") as f:
                     data = json.load(f)
 
-                problem_name: str | None = None
-                for base_dir in paths:
-                    if file_path.startswith(base_dir):
-                        problem_name = os.path.relpath(
-                            os.path.dirname(file_path), base_dir
-                        )
-                        break
-                assert problem_name is not None
+                problem_name = os.path.relpath(os.path.dirname(file_path), base_dir)
                 times[problem_name] = data[RESULTS_TIME_KEY]
                 tlemmas[problem_name] = data[RESULTS_TLEMMAS_NUM_KEY]
 
@@ -63,6 +49,25 @@ def get_current_results_times(
 
                 avgs[problem_name] = avg
                 medians[problem_name] = med
+    if err_file:
+        with open(err_file, "r") as f:
+            errors = json.load(f)
+
+        for problem, reason in errors.items():
+            if reason != "timeout":
+                raise ValueError("Unexpected error reason in data:", reason)
+
+            found = None
+            for bp in benchmark_paths or []:
+                prefix = bp.rstrip("/\\") + os.sep
+                if problem.startswith(prefix):
+                    found = problem[len(prefix) :].replace(".smt2", "")
+                    break
+
+            if found is not None and found not in times:
+                times[found] = timeout
+            elif found is None:
+                times[problem.split(os.sep)[-1].replace(".smt2", "")] = timeout
 
     return times, tlemmas, avgs, medians
 
@@ -416,12 +421,18 @@ def linearize_data(h3: dict, h4: dict) -> dict:
     return result
 
 
-def _load_run_data(run_dir: str, timeout: float) -> tuple[dict, dict, dict, dict]:
+def _load_run_data(
+    run_dir: str,
+    timeout: float,
+    benchmark_paths: list[str] | None = None,
+) -> tuple[dict, dict, dict, dict]:
     """Load benchmark metrics from one result directory."""
     err_file = os.path.join(run_dir, "errors.json")
     if not os.path.exists(err_file):
         err_file = None
-    return get_current_results_times(err_file, [run_dir], timeout=timeout)
+    return get_current_results_times(
+        err_file, [run_dir], timeout=timeout, benchmark_paths=benchmark_paths
+    )
 
 
 def _align_common_keys(*datasets: dict) -> list[dict]:
@@ -463,6 +474,13 @@ def _parse_args() -> argparse.Namespace:
         default=3600.0,
         help="Timeout in seconds for detecting timed-out benchmarks (default: 3600)",
     )
+    parser.add_argument(
+        "--benchmark-dir",
+        action="append",
+        dest="benchmark_dirs",
+        default=None,
+        help="Benchmark input directories (used to match error keys to log keys)",
+    )
     return parser.parse_args()
 
 
@@ -478,13 +496,17 @@ def main() -> None:
         first_tlemmas,
         _,
         first_median_tlemmas_sizes,
-    ) = _load_run_data(args.first_dir, timeout=args.timeout)
+    ) = _load_run_data(
+        args.first_dir, timeout=args.timeout, benchmark_paths=args.benchmark_dirs
+    )
     (
         second_times,
         second_tlemmas,
         _,
         second_median_tlemmas_sizes,
-    ) = _load_run_data(args.second_dir, timeout=args.timeout)
+    ) = _load_run_data(
+        args.second_dir, timeout=args.timeout, benchmark_paths=args.benchmark_dirs
+    )
 
     first_times, second_times = _align_common_keys(first_times, second_times)
     first_tlemmas, second_tlemmas = _align_common_keys(first_tlemmas, second_tlemmas)
