@@ -16,6 +16,7 @@ from enumerators.solvers import (
     MathSATTotalEnumerator,
     SMTEnumerator,
     WithPartitioningWrapper,
+    WithProjectionWrapper,
 )
 from enumerators.walkers.normalizer import NormalizerWalker
 from pysmt.fnode import FNode
@@ -52,16 +53,17 @@ def create_solver(
     """Create and configure an SMT solver for T-lemma enumeration."""
     if solver_type == "sequential":
         solver: SMTEnumerator = MathSATTotalEnumerator(
-            project_on_theory_atoms=projection,
             computation_logger=logger,
         )
     else:
         solver = MathSATDivideAndConquerEnumerator(
-            project_on_theory_atoms=projection,
             computation_logger=logger,
             parallel_procs=procs,
             divide_strategy=DIVIDE_STRATEGIES[divide_strategy],
         )
+
+    if projection and not partition:
+        solver = WithProjectionWrapper(solver)
 
     if partition:
         solver = WithPartitioningWrapper(
