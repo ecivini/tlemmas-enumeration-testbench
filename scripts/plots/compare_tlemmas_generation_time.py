@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import statistics
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -319,14 +320,57 @@ def _align_common_keys(*datasets: dict) -> list[dict]:
     return [{key: data[key] for key in sorted(common_keys)} for data in datasets]
 
 
+def _plot_all_scatter_pairs(
+    i: int,
+    j: int,
+    labels: list[str],
+    all_times: list[dict[str, float]],
+    all_tlemmas: list[dict[str, int]],
+    all_medians: list[dict[str, float]],
+    timeout: float,
+    out_dir: str,
+) -> None:
+    def get_items(
+        idx: int,
+    ) -> tuple[str, dict[str, float], dict[str, int], dict[str, float]]:
+        return labels[idx], all_times[idx], all_tlemmas[idx], all_medians[idx]
+
+    labi, timei, lemi, medi = get_items(i)
+    labj, timej, lemj, medj = get_items(j)
+    pair_tag = f"{labi}_vs_{labj}"
+    scatter_configs = [
+        (timei, labi, timej, labj, " (time)", True, "gen_time", timeout),
+        (lemi, labi, lemj, labj, " (# T-lemmas)", True, "num", None),
+        (medi, labi, medj, labj, " (median T-lemma size)", False, "median_size", None),
+    ]
+    for x_data, x_label, y_data, y_label, suffix, log, suffix_fn, to in scatter_configs:
+        create_scatter_plot(
+            x_data,
+            x_label,
+            y_data,
+            y_label,
+            timeout=to,
+            label_suffix=suffix,
+            log_scale=log,
+            out_path=os.path.join(
+                out_dir,
+                f"{pair_tag}_tlemmas_{suffix_fn}.pdf",
+            ),
+        )
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Compare T-lemma generation results between two runs."
+        description="Compare T-lemma generation results across multiple runs."
     )
-    parser.add_argument("first_dir", help="First results/data directory")
-    parser.add_argument("second_dir", help="Second results/data directory")
-    parser.add_argument("--first-label", required=True, help="Label for first run")
-    parser.add_argument("--second-label", required=True, help="Label for second run")
+    parser.add_argument(
+        "--data",
+        nargs=2,
+        action="append",
+        required=True,
+        metavar=("DIR", "LABEL"),
+        help="A results directory and its label (repeatable, at least 2)",
+    )
     parser.add_argument("--out-dir", default=".", help="Directory for generated plots")
     parser.add_argument(
         "--timeout",
@@ -341,92 +385,53 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Benchmark input directories (used to match error keys to log keys)",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if len(args.data) < 2:
+        parser.error("At least 2 datasets are required")
+    return args
 
 
 def main() -> None:
     args = _parse_args()
-    first_label = args.first_label or os.path.basename(os.path.normpath(args.first_dir))
-    second_label = args.second_label or os.path.basename(
-        os.path.normpath(args.second_dir)
-    )
+    timeout = args.timeout
+    out_dir = args.out_dir
 
-    first_times, first_tlemmas, _, first_median_tlemmas_sizes = _load_run_data(
-        args.first_dir, timeout=args.timeout, benchmark_paths=args.benchmark_dirs
-    )
-    second_times, second_tlemmas, _, second_median_tlemmas_sizes = _load_run_data(
-        args.second_dir, timeout=args.timeout, benchmark_paths=args.benchmark_dirs
-    )
-
-    first_times, second_times = _align_common_keys(first_times, second_times)
-    first_tlemmas, second_tlemmas = _align_common_keys(first_tlemmas, second_tlemmas)
-    first_median_tlemmas_sizes, second_median_tlemmas_sizes = _align_common_keys(
-        first_median_tlemmas_sizes,
-        second_median_tlemmas_sizes,
-    )
-
-    os.makedirs(args.out_dir, exist_ok=True)
-
-    scatter_configs = [
-        (
-            first_times,
-            first_label,
-            second_times,
-            second_label,
-            " (time)",
-            True,
-            "gen_time",
-            args.timeout,
-        ),
-        (
-            first_tlemmas,
-            first_label,
-            second_tlemmas,
-            second_label,
-            " (# T-lemmas)",
-            True,
-            "num",
-            None,
-        ),
-        (
-            first_median_tlemmas_sizes,
-            first_label,
-            second_median_tlemmas_sizes,
-            second_label,
-            " (median T-lemma size)",
-            False,
-            "median_size",
-            None,
-        ),
-    ]
-    for x_data, x_label, y_data, y_label, suffix, log, suffix_fn, to in scatter_configs:
-        create_scatter_plot(
-            x_data,
-            x_label,
-            y_data,
-            y_label,
-            timeout=to,
-            label_suffix=suffix,
-            log_scale=log,
-            out_path=os.path.join(
-                args.out_dir, f"{first_label}_vs_{second_label}_tlemmas_{suffix_fn}.pdf"
-            ),
+    labels = []
+    all_times = []
+    all_tlemmas = []
+    all_medians = []
+    for dir_path, label in args.data:
+        labels.append(label)
+        times, tlemmas, _, medians = _load_run_data(
+            dir_path, timeout=timeout, benchmark_paths=args.benchmark_dirs
         )
+        all_times.append(times)
+        all_tlemmas.append(tlemmas)
+        all_medians.append(medians)
+
+    all_times = _align_common_keys(*all_times)
+    all_tlemmas = _align_common_keys(*all_tlemmas)
+    all_medians = _align_common_keys(*all_medians)
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    for i in range(len(labels)):
+        for j in range(i + 1, len(labels)):
+            _plot_all_scatter_pairs(
+                i, j, labels, all_times, all_tlemmas, all_medians, timeout, out_dir
+            )
+
+    cactus_tag = "_vs_".join(labels)
     create_cactus_plot(
-        (first_times, first_label),
-        (second_times, second_label),
-        timeout=args.timeout,
-        out_path=os.path.join(
-            args.out_dir, f"cactus_{first_label}_vs_{second_label}.pdf"
-        ),
+        *[(all_times[i], labels[i]) for i in range(len(labels))],
+        timeout=timeout,
+        out_path=os.path.join(out_dir, f"cactus_{cactus_tag}.pdf"),
     )
-    handles, labels = plt.gca().get_legend_handles_labels()
+    handles, legend_labels = plt.gca().get_legend_handles_labels()
     save_legend_plot(
         handles,
-        labels,
-        out_path=os.path.join(
-            args.out_dir, f"{first_label}_vs_{second_label}_legend.pdf"
-        ),
+        legend_labels,
+        out_path=os.path.join(out_dir, f"{cactus_tag}_legend.pdf"),
     )
 
 
