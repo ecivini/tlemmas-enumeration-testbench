@@ -29,7 +29,7 @@ DIVIDE_STRATEGIES: dict[str, DivideStrategy] = {
 SOLVER = Literal["sequential", "parallel"]
 
 
-def read_formula(path: Path) -> FNode:
+def read_formula(path: Path | str) -> FNode:
     """Read an SMT-LIB formula from a file."""
     try:
         phi = cast(FNode, read_smtlib(str(path)))

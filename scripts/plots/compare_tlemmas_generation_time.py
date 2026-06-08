@@ -1,51 +1,30 @@
+import argparse
 import json
 import os
-
-from pysmt.shortcuts import read_smtlib
-from pysmt.fnode import FNode
-import pysmt
+import statistics
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pysmt
+import pysmt.environment
+from pysmt.fnode import FNode
+from tasks.generate_tlemmas import read_formula
 
-import statistics
-
-DEFAULT_TIMEOUT = 3600.0  # seconds
 RESULTS_TIME_KEY = "Total time"
-RESULTS_TLEMMAS_NUM_KEY = "T-Lemmas number"
-
-
-def extract_tlemmas_from_smt2(path: str) -> int:
-    try:
-        lemmas = read_smtlib(path)
-        if lemmas.is_or():
-            return 1
-
-        assert lemmas.is_and()
-
-        return len(lemmas.args())
-    except:
-        return None
+RESULTS_TLEMMAS_NUM_KEY = "Lemmas"
 
 
 def get_current_results_times(
-    err_file: str | None, paths: list[str], solver: str | None = None
-) -> tuple[dict, dict, dict, dict]:
-    times = {}
-    tlemmas = {}
-    avgs = {}
-    medians = {}
-    literals = {}
-
-    if err_file:
-        with open(err_file, "r") as f:
-            errors = json.load(f)
-            for problem, reason in errors.items():
-                if reason == "timeout":
-                    key_name = problem.split(os.sep)[-1].replace(".smt2", "")
-                    times[key_name] = DEFAULT_TIMEOUT
-                else:
-                    raise ValueError("Unexpected error reason in data:", reason)
+    err_file: str | None,
+    paths: list[str],
+    timeout: float,
+    benchmark_paths: list[str] | None = None,
+) -> tuple[dict[str, float], dict[str, int], dict[str, float], dict[str, float]]:
+    times: dict[str, float] = {}
+    tlemmas: dict[str, int] = {}
+    avgs: dict[str, float] = {}
+    medians: dict[str, float] = {}
 
     for base_dir in paths:
         for root, _, files in os.walk(base_dir):
@@ -54,49 +33,65 @@ def get_current_results_times(
                     continue
 
                 file_path = os.path.join(root, file)
+                print("parsing file", file_path)
                 with open(file_path, "r") as f:
                     data = json.load(f)
 
-                problem_name = os.path.dirname(file_path).split(os.sep)[-1]
+                problem_name = os.path.relpath(os.path.dirname(file_path), base_dir)
                 times[problem_name] = data[RESULTS_TIME_KEY]
                 tlemmas[problem_name] = data[RESULTS_TLEMMAS_NUM_KEY]
 
-                # extracts stats from the lemmas
+                pysmt.environment.push_env()
                 tlemmas_fnode = get_tlemmas_from_logs(file_path)
-                avg, med, lits = compute_tlemmas_stats(tlemmas_fnode, solver)
+                avg, med = compute_tlemmas_stats(tlemmas_fnode)
+                pysmt.environment.pop_env()
+                assert len(tlemmas_fnode) == tlemmas[problem_name]
 
                 avgs[problem_name] = avg
                 medians[problem_name] = med
-                literals[problem_name] = lits
+
+    if err_file:
+        with open(err_file, "r") as f:
+            errors = json.load(f)
+
+        for problem, reason in errors.items():
+            if reason != "timeout":
+                raise ValueError("Unexpected error reason in data:", reason)
+
+            found = None
+            for bp in benchmark_paths or []:
+                prefix = bp.rstrip("/\\") + os.sep
+                if problem.startswith(prefix):
+                    found = problem[len(prefix) :].replace(".smt2", "")
+                    break
+
+            if found is not None and found not in times:
+                times[found] = timeout
+            elif found is None:
+                times[problem.split(os.sep)[-1].replace(".smt2", "")] = timeout
 
     return times, tlemmas, avgs, medians
 
 
-def get_all_or_children(formula):
-    if formula.is_or():
-        children = []
-        for arg in formula.args():
-            children.extend(get_all_or_children(arg))
-        return children
-    else:
-        return [formula]
+def get_clause_size(formula: FNode) -> int:
+    stack = [formula]
+    result = 0
+    while stack:
+        clause = stack.pop()
+        if clause.is_or():
+            stack += clause.args()
+        else:
+            result += 1
+    return result
 
 
-def compute_tlemmas_stats(
-    tlemmas: list[FNode], solver: str | None = None
-) -> tuple[float, float, list]:
-    literals_num_list = []
-    for lemma in tlemmas:
-        # lemma is an or clause
-        lemma_size = len(get_all_or_children(lemma))
-        literals_num_list.append(lemma_size)
-
-    literals_num_list.sort()
+def compute_tlemmas_stats(tlemmas: list[FNode]) -> tuple[float, float]:
+    literals_num_list = [get_clause_size(lemma) for lemma in tlemmas]
 
     avg_lemma_size = statistics.mean(literals_num_list)
     median_lemma_size = statistics.median(literals_num_list)
 
-    return (avg_lemma_size, median_lemma_size, literals_num_list)
+    return avg_lemma_size, median_lemma_size
 
 
 def get_tlemmas_from_logs(logs_path: str) -> list[FNode]:
@@ -107,11 +102,10 @@ def get_tlemmas_from_logs(logs_path: str) -> list[FNode]:
         if f.endswith(".smt2") and os.path.isfile(os.path.join(dir_name, f))
     ]
     # there should be only one file
-    assert len(files) == 1
+    assert len(files) == 1, "multiple .smt2 files in {}: {}".format(dir_name, files)
     tlemmas_path = files[0]
 
-    pysmt.environment.reset_env()
-    tlemmas_and = read_smtlib(tlemmas_path)
+    tlemmas_and = read_formula(tlemmas_path)
     if tlemmas_and.is_and():
         return list(tlemmas_and.args())
     elif tlemmas_and.is_or():
@@ -121,81 +115,43 @@ def get_tlemmas_from_logs(logs_path: str) -> list[FNode]:
 
 
 def create_cactus_plot(
-    first: dict,
-    current: dict,
-    x1_label: str,
-    x2_label: str,
-    third: dict | None = None,  # Eventual third solver data
-    x3_label: str | None = None,  # Eventual third solver label
-    fourth: dict | None = None,
-    x4_label: str | None = None,
+    *datasets: tuple[dict[str, int] | dict[str, float], str],
     show_vbs: bool = False,
+    timeout: float = 3600.0,
     out_path: str = "cactus.pdf",
 ) -> None:
-    first_times = []
-    current_times = []
-    third_times = []
-    fourth_times = []
-    vbs_times = []
-    for problem in current:
-        first_time = (
-            first[problem] if first[problem] <= DEFAULT_TIMEOUT else DEFAULT_TIMEOUT
-        )
-        current_time = (
-            current[problem] if current[problem] <= DEFAULT_TIMEOUT else DEFAULT_TIMEOUT
+    MARKERS = ["o", "^", "s", "D", "v", "<", ">", "p", "*", "h"]
+
+    assert len(datasets) >= 2, "Need at least 2 datasets"
+
+    # Verify all dicts share same keys
+    keys = list(datasets[0][0].keys())
+    for data, _ in datasets[1:]:
+        assert data.keys() == datasets[0][0].keys(), (
+            "All data dicts must share same keys"
         )
 
-        third_time = None
-        if third is not None:
-            third_time = (
-                third[problem] if third[problem] <= DEFAULT_TIMEOUT else DEFAULT_TIMEOUT
-            )
+    # Clamp & sort per dataset
+    sorted_data = []
+    for data, label in datasets:
+        times = sorted(min(data[k], timeout) for k in keys)
+        sorted_data.append((times, label))
 
-        fourth_time = None
-        if fourth is not None:
-            fourth_time = (
-                fourth[problem]
-                if fourth[problem] <= DEFAULT_TIMEOUT
-                else DEFAULT_TIMEOUT
-            )
-
-        vbs_time = min(first_time, current_time)
-        if third_time:
-            vbs_time = min(vbs_time, third_time)
-        if fourth_time:
-            vbs_time = min(vbs_time, fourth_time)
-
-        first_times.append(first_time)
-        current_times.append(current_time)
-        if third_time:
-            third_times.append(third_time)
-        if fourth_time:
-            fourth_times.append(fourth_time)
-
-        vbs_times.append(vbs_time)
-
-    first_times.sort()
-    current_times.sort()
-    third_times.sort()
-    fourth_times.sort()
-    vbs_times.sort()
-
-    x1 = np.arange(1, len(first_times) + 1)
-    x2 = np.arange(1, len(current_times) + 1)
-    x3 = np.arange(1, len(third_times) + 1)
-    x4 = np.arange(1, len(fourth_times) + 1)
-    x5 = np.arange(1, len(vbs_times) + 1)
+    # VBS
+    vbs_times = None
+    if show_vbs:
+        raw = [min(data[k] for data, _ in datasets) for k in keys]
+        vbs_times = sorted(min(t, timeout) for t in raw)
 
     # Plot
     plt.figure(figsize=(9, 6))
-    plt.plot(x1, first_times, label=x1_label, marker="o", markersize=2)
-    plt.plot(x2, current_times, label=x2_label, marker="^", markersize=2)
-    if len(x3) > 0:
-        plt.plot(x3, third_times, label=x3_label, marker="+", markersize=2)
-    if len(x4) > 0:
-        plt.plot(x4, fourth_times, label=x4_label, marker="+", markersize=2)
-    if show_vbs:
-        plt.plot(x5, vbs_times, label="Virtual Best", marker="s", markersize=1)
+    for i, (times, label) in enumerate(sorted_data):
+        x = np.arange(1, len(times) + 1)
+        plt.plot(x, times, label=label, marker=MARKERS[i % len(MARKERS)], markersize=2)
+
+    if show_vbs and vbs_times:
+        x = np.arange(1, len(vbs_times) + 1)
+        plt.plot(x, vbs_times, label="Virtual Best", marker="s", markersize=1)
 
     plt.xlabel("Number of problems solved", fontsize=24)
     plt.ylabel("Time (s)", fontsize=24)
@@ -208,450 +164,276 @@ def create_cactus_plot(
 
 
 def create_scatter_plot(
-    first: dict,
-    current: dict,
+    x_data: dict,
     x_label: str,
+    y_data: dict,
     y_label: str,
     lower_threshold: float = 1.0,
-    out_path: str = "scatter.pdf",
-):
-    first_times = []
-    current_times = []
-    first_timeouts = 0
-    current_timeouts = 0
-
-    first_under_lower_threshold = 0
-    current_under_lower_threshold = 0
-
-    for problem in current.keys():
-        first_times.append(first[problem])
-        current_times.append(current[problem])
-
-        if first[problem] >= DEFAULT_TIMEOUT:
-            first_timeouts += 1
-        elif first[problem] <= lower_threshold:
-            first_under_lower_threshold += 1
-
-        if current[problem] >= DEFAULT_TIMEOUT:
-            current_timeouts += 1
-        elif current[problem] <= lower_threshold:
-            current_under_lower_threshold += 1
-
-    timeout = DEFAULT_TIMEOUT
-    linthresh = 10  # Linear region until 1
-
-    # Create figure
-    fig, ax = plt.subplots(figsize=(7, 7))
-
-    # Scatter plot
-    ax.scatter(
-        x=current_times,
-        y=first_times,
-        color="lightskyblue",
-        edgecolors="black",
-        s=100,
-        zorder=4,
-        alpha=1,
-        marker="X",
-    )
-
-    # Reference line y = x
-    ax.plot(
-        [1e-2, timeout],
-        [1e-2, timeout],
-        label="y = x",
-        zorder=2,
-        color="gray",
-        linestyle="--",
-    )
-
-    # Timeout lines (dashed)
-    ax.axvline(
-        timeout,
-        linestyle="--",
-        color="gray",
-        # label=(
-        #     f"{x_label} timeouts: {current_timeouts} "  # noqa
-        #     f"| below {lower_threshold} sec: {current_under_lower_threshold}"
-        # ),
-    )
-
-    print(
-        f"\n{out_path}\n"
-        f"{x_label} timeouts: {current_timeouts}"  # noqa
-        f"| below {lower_threshold} sec: {current_under_lower_threshold}"
-    )
-
-    ax.axhline(
-        timeout,
-        linestyle="--",
-        color="gray",
-        label=(
-            f"{y_label} timeouts: {first_timeouts} "  # noqa
-            f"| below {lower_threshold} sec: {first_under_lower_threshold}"
-        ),
-    )
-
-    print(
-        f"{y_label} timeouts: {first_timeouts} "  # noqa
-        f"| below {lower_threshold} sec: {first_under_lower_threshold}"
-    )
-
-    # Set symlog scale
-    ax.set_xscale("symlog", linthresh=linthresh)
-    ax.set_yscale("symlog", linthresh=linthresh)
-    ax.set_aspect("equal")
-
-    # Set limits
-    ax.set_xlim(left=1e-2, right=timeout * 1.1)
-    ax.set_ylim(bottom=1e-2, top=timeout * 1.1)
-
-    # Labels
-    ax.set_xlabel(f"{x_label} times", fontsize=24)
-    ax.set_ylabel(f"{y_label} times", fontsize=24)
-    plt.xticks(fontsize=18)
-    plt.yticks(fontsize=18)
-
-    # Grid
-    ax.grid(True, which="both", linestyle=":", linewidth=0.5)
-
-    # Legend
-    # ax.legend(loc="lower right")
-
-    # Show plot
-    plt.tight_layout()
-    plt.savefig(out_path)
-
-
-def create_tlemmas_scatter_plot(
-    first: dict,
-    current: dict,
-    first_label: str,
-    curr_label: str,
-    out_path: str = "scatter_num.pdf",
+    timeout: float | None = None,
+    label_suffix: str = "",
     log_scale: bool = True,
-):
-    first_times = []
-    current_times = []
-
-    for problem in current.keys():
-        if problem not in first:
-            continue
-
-        first_times.append(first[problem])
-        current_times.append(current[problem])
-
-    if not first_times or not current_times:
+    out_path: str = "scatter.pdf",
+) -> None:
+    common_keys = sorted(set(x_data.keys()) & set(y_data.keys()))
+    if not common_keys:
         print("No data for plot:", out_path)
         return
 
-    timeout = max(max(first_times), max(current_times))
+    completed_x, completed_y = [], []
+    timeout_x, timeout_y = [], []
+    x_timeouts = 0
+    y_timeouts = 0
+    x_below = 0
+    y_below = 0
 
-    # Create figure
-    fig, ax = plt.subplots(figsize=(7, 7))
+    for key in common_keys:
+        xv = x_data[key]
+        yv = y_data[key]
 
-    # Scatter plot
+        if timeout is not None:
+            x_is_timeout = xv >= timeout
+            y_is_timeout = yv >= timeout
+            if x_is_timeout or y_is_timeout:
+                if x_is_timeout:
+                    x_timeouts += 1
+                if y_is_timeout:
+                    y_timeouts += 1
+                timeout_x.append(timeout if x_is_timeout else xv)
+                timeout_y.append(timeout if y_is_timeout else yv)
+                continue
+            if xv <= lower_threshold:
+                x_below += 1
+            if yv <= lower_threshold:
+                y_below += 1
+        completed_x.append(xv)
+        completed_y.append(yv)
+
+    plot_max = (
+        timeout if timeout is not None else max(max(completed_x), max(completed_y))
+    )
+
+    _, ax = plt.subplots(figsize=(7, 7))
+
     ax.scatter(
-        x=current_times,
-        y=first_times,
+        x=completed_x,
+        y=completed_y,
         color="lightskyblue",
         edgecolors="black",
         s=100,
         zorder=4,
-        alpha=1,
+        alpha=0.5,
         marker="X",
     )
 
-    # Reference line y = x
+    if timeout is not None and timeout_x:
+        ax.scatter(
+            x=timeout_x,
+            y=timeout_y,
+            color="red",
+            edgecolors="black",
+            s=100,
+            zorder=4,
+            alpha=0.5,
+            marker="X",
+        )
+
     ax.plot(
-        [1e-2, timeout],
-        [1e-2, timeout],
+        [1e-2, plot_max],
+        [1e-2, plot_max],
         label="y = x",
         zorder=2,
         color="gray",
         linestyle="--",
     )
 
-    # Timeout lines (dashed)
-    # ax.axvline(timeout, linestyle="--", color="gray")
-    # ax.axhline(timeout, linestyle="--", color="gray")
+    if timeout is not None:
+        ax.axvline(timeout, linestyle="--", color="gray")
+        ax.axhline(timeout, linestyle="--", color="gray")
 
-    # Set symlog scale
+    if timeout is not None:
+        print(
+            f"\n{out_path}\n"
+            f"{x_label} timeouts: {x_timeouts}"
+            f"| below {lower_threshold} sec: {x_below}"
+        )
+        print(
+            f"{y_label} timeouts: {y_timeouts} | below {lower_threshold} sec: {y_below}"
+        )
+        print(f"Timed out problems: {len(timeout_x)}")
+
     if log_scale:
-        ax.set_xscale("symlog")
-        ax.set_yscale("symlog")
+        ax.set_xscale("symlog", linthresh=10)
+        ax.set_yscale("symlog", linthresh=10)
     else:
         ax.set_xscale("linear")
         ax.set_yscale("linear")
     ax.set_aspect("equal")
 
-    # Set limits
-    ax.set_xlim(left=1e-2, right=timeout * 1.2)
-    ax.set_ylim(bottom=1e-2, top=timeout * 1.2)
+    ax.set_xlim(left=1e-2, right=plot_max * 1.1)
+    ax.set_ylim(bottom=1e-2, top=plot_max * 1.1)
 
-    # Labels
-    ax.set_xlabel(f"{curr_label}", fontsize=24)
-    ax.set_ylabel(f"{first_label}", fontsize=24)
-
-    # Grid
-    ax.grid(True, which="both", linestyle=":", linewidth=0.5)
-
-    # Legend
-    # ax.legend()
+    ax.set_xlabel(f"{x_label}{label_suffix}", fontsize=24)
+    ax.set_ylabel(f"{y_label}{label_suffix}", fontsize=24)
     plt.xticks(fontsize=18)
     plt.yticks(fontsize=18)
+    ax.grid(True, which="both", linestyle=":", linewidth=0.5)
 
-    # Show plot
     plt.tight_layout()
     plt.savefig(out_path)
 
 
-def linearize_data(h3: dict, h4: dict) -> dict:
-    # rename all fields in h3 from x_y to h3_x_y:
-    result = {}
-    for key in h3:
-        result[f"h3_{key}"] = h3[key]
+def save_legend_plot(
+    handles: list,
+    labels: list,
+    out_path: str,
+) -> None:
+    fig = plt.figure(figsize=(8, 2))
+    fig.legend(handles, labels, fontsize=14, ncol=3, loc="center")
+    plt.tight_layout()
+    plt.savefig(out_path)
+    plt.close(fig)
 
-    # Add h4 with the same adjusted format
-    for key in h4:
-        result[f"h4_{key}"] = h4[key]
 
-    return result
+def _load_run_data(
+    run_dir: str,
+    timeout: float,
+    benchmark_paths: list[str] | None = None,
+) -> tuple[dict[str, float], dict[str, int], dict[str, float], dict[str, float]]:
+    """Load benchmark metrics from one result directory."""
+    err_file = os.path.join(run_dir, "errors.json")
+    if not os.path.exists(err_file):
+        err_file = None
+    return get_current_results_times(
+        err_file, [run_dir], timeout=timeout, benchmark_paths=benchmark_paths
+    )
+
+
+def _align_common_keys(*datasets: dict) -> list[dict]:
+    """Keep only problems present in every dataset."""
+    if not datasets:
+        return []
+
+    common_keys = set(datasets[0].keys())
+    for data in datasets[1:]:
+        common_keys &= set(data.keys())
+
+    return [{key: data[key] for key in sorted(common_keys)} for data in datasets]
+
+
+def _plot_all_scatter_pairs(
+    i: int,
+    j: int,
+    labels: list[str],
+    all_times: list[dict[str, float]],
+    all_tlemmas: list[dict[str, int]],
+    all_medians: list[dict[str, float]],
+    timeout: float,
+    out_dir: str,
+) -> None:
+    def get_items(
+        idx: int,
+    ) -> tuple[str, dict[str, float], dict[str, int], dict[str, float]]:
+        return labels[idx], all_times[idx], all_tlemmas[idx], all_medians[idx]
+
+    labi, timei, lemi, medi = get_items(i)
+    labj, timej, lemj, medj = get_items(j)
+    pair_tag = f"{labi}_vs_{labj}"
+    scatter_configs = [
+        (timei, labi, timej, labj, " (time)", True, "gen_time", timeout),
+        (lemi, labi, lemj, labj, " (# T-lemmas)", True, "num", None),
+        (medi, labi, medj, labj, " (median T-lemma size)", False, "median_size", None),
+    ]
+    for x_data, x_label, y_data, y_label, suffix, log, suffix_fn, to in scatter_configs:
+        create_scatter_plot(
+            x_data,
+            x_label,
+            y_data,
+            y_label,
+            timeout=to,
+            label_suffix=suffix,
+            log_scale=log,
+            out_path=os.path.join(
+                out_dir,
+                f"{pair_tag}_tlemmas_{suffix_fn}.pdf",
+            ),
+        )
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Compare T-lemma generation results across multiple runs."
+    )
+    parser.add_argument(
+        "--data",
+        nargs=2,
+        action="append",
+        required=True,
+        metavar=("DIR", "LABEL"),
+        help="A results directory and its label (repeatable, at least 2)",
+    )
+    parser.add_argument("--out-dir", default=".", help="Directory for generated plots")
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=3600.0,
+        help="Timeout in seconds for detecting timed-out benchmarks (default: 3600)",
+    )
+    parser.add_argument(
+        "--benchmark-dir",
+        action="append",
+        dest="benchmark_dirs",
+        default=None,
+        help="Benchmark input directories (used to match error keys to log keys)",
+    )
+    args = parser.parse_args()
+    if len(args.data) < 2:
+        parser.error("At least 2 datasets are required")
+    return args
+
+
+def main() -> None:
+    args = _parse_args()
+    timeout = args.timeout
+    out_dir = args.out_dir
+
+    labels = []
+    all_times = []
+    all_tlemmas = []
+    all_medians = []
+    for dir_path, label in args.data:
+        labels.append(label)
+        times, tlemmas, _, medians = _load_run_data(
+            dir_path, timeout=timeout, benchmark_paths=args.benchmark_dirs
+        )
+        all_times.append(times)
+        all_tlemmas.append(tlemmas)
+        all_medians.append(medians)
+
+    all_times = _align_common_keys(*all_times)
+    all_tlemmas = _align_common_keys(*all_tlemmas)
+    all_medians = _align_common_keys(*all_medians)
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    for i in range(len(labels)):
+        for j in range(i + 1, len(labels)):
+            _plot_all_scatter_pairs(
+                i, j, labels, all_times, all_tlemmas, all_medians, timeout, out_dir
+            )
+
+    cactus_tag = "_vs_".join(labels)
+    create_cactus_plot(
+        *[(all_times[i], labels[i]) for i in range(len(labels))],
+        timeout=timeout,
+        out_path=os.path.join(out_dir, f"cactus_{cactus_tag}.pdf"),
+    )
+    handles, legend_labels = plt.gca().get_legend_handles_labels()
+    save_legend_plot(
+        handles,
+        legend_labels,
+        out_path=os.path.join(out_dir, f"{cactus_tag}_legend.pdf"),
+    )
 
 
 if __name__ == "__main__":
-    solver_x1 = "Baseline"
-    solver_x2 = "D&C"
-    solver_x3 = "D&C+Proj"
-    solver_x4 = "D&C+Proj+Part"
-
-    ###########################################################################
-    # RAND PROBLEMS
-    x1_times, x1_tlemmas, _, x1_median_tlemmas_sizes = get_current_results_times(
-        None,
-        [
-            "results/test_baseline/data",
-        ],
-    )
-
-    (
-        x2_times,
-        x2_tlemmas,
-        _,
-        x2_median_tlemmas_sizes,
-    ) = get_current_results_times(
-        None,
-        [
-            "results/test_divconq/data",
-        ],
-    )
-
-    (
-        x3_times,
-        x3_tlemmas,
-        _,
-        x3_median_tlemmas_sizes,
-    ) = get_current_results_times(
-        None,
-        [
-            "results/test_divconq_proj/data",
-        ],
-    )
-
-    (
-        x4_times,
-        x4_tlemmas,
-        _,
-        x4_median_tlemmas_sizes,
-    ) = get_current_results_times(
-        None,
-        [
-            "results/test_divconq_proj_part/data",
-        ],
-    )
-
-    ###################################################################
-    ###################################################################
-    # BEGINNING OF THE PLOTS
-
-    # Scatter plots
-    create_scatter_plot(
-        x1_times,
-        x2_times,
-        x_label=solver_x2,
-        y_label=solver_x1,
-        out_path="seq_vs_par45_tlemmas_gen_time.pdf",
-    )
-    create_scatter_plot(
-        x1_times,
-        x3_times,
-        x_label=solver_x3,
-        y_label=solver_x1,
-        out_path="seq_vs_par45_proj_atoms_tlemmas_gen_time.pdf",
-    )
-    create_scatter_plot(
-        x1_times,
-        x4_times,
-        x_label=solver_x4,
-        y_label=solver_x1,
-        out_path="seq_vs_partition_tlemmas_gen_time.pdf",
-    )
-
-    create_scatter_plot(
-        x2_times,
-        x3_times,
-        x_label=solver_x3,
-        y_label=solver_x2,
-        out_path="par45_vs_par45_proj_atoms_tlemmas_gen_time.pdf",
-    )
-    create_scatter_plot(
-        x2_times,
-        x4_times,
-        x_label=solver_x4,
-        y_label=solver_x2,
-        out_path="par45_vs_partition_tlemmas_gen_time.pdf",
-    )
-
-    create_scatter_plot(
-        x3_times,
-        x4_times,
-        x_label=solver_x4,
-        y_label=solver_x3,
-        out_path="par45_proj_vs_partition_tlemmas_gen_time.pdf",
-    )
-
-    # T-lemmas number
-    create_tlemmas_scatter_plot(
-        x1_tlemmas,
-        x2_tlemmas,
-        solver_x1,
-        solver_x2,
-        out_path="seq_vs_par45_tlemmas_num.pdf",
-    )
-    create_tlemmas_scatter_plot(
-        x1_tlemmas,
-        x3_tlemmas,
-        solver_x1,
-        solver_x3,
-        out_path="seq_vs_par45_proj_atoms_tlemmas_num.pdf",
-    )
-    create_tlemmas_scatter_plot(
-        x1_tlemmas,
-        x4_tlemmas,
-        solver_x1,
-        solver_x4,
-        out_path="seq_vs_partition_tlemmas_num.pdf",
-    )
-
-    create_tlemmas_scatter_plot(
-        x2_tlemmas,
-        x3_tlemmas,
-        solver_x2,
-        solver_x3,
-        out_path="par45_vs_par45_proj_atoms_tlemmas_num.pdf",
-    )
-    create_tlemmas_scatter_plot(
-        x2_tlemmas,
-        x4_tlemmas,
-        solver_x2,
-        solver_x4,
-        out_path="par45_vs_partition_tlemmas_num.pdf",
-    )
-
-    create_tlemmas_scatter_plot(
-        x3_tlemmas,
-        x4_tlemmas,
-        solver_x3,
-        solver_x4,
-        out_path="par45_proj_vs_partition_tlemmas_num.pdf",
-    )
-
-    # Tlemmas average sizes
-    # create_tlemmas_scatter_plot(
-    #     prev_avg_tlemmas_sizes,
-    #     current_avg_tlemmas_sizes,
-    #     solver_prev,
-    #     solver_curr,
-    #     out_path="seq_vs_par45_tlemmas_avg_size.pdf",
-    # )
-
-    # create_tlemmas_scatter_plot(
-    #     prev_avg_tlemmas_sizes,
-    #     x3_avg_tlemmas_sizes,
-    #     solver_prev,
-    #     solver_x3,
-    #     out_path="seq_vs_par45_proj_atoms_tlemmas_avg_size.pdf",
-    # )
-
-    # create_tlemmas_scatter_plot(
-    #     current_avg_tlemmas_sizes,
-    #     x3_avg_tlemmas_sizes,
-    #     solver_curr,
-    #     solver_x3,
-    #     out_path="par45_vs_par45_proj_atoms_tlemmas_avg_size.pdf",
-    # )
-
-    # Tlemmas median sizes
-    create_tlemmas_scatter_plot(
-        x1_median_tlemmas_sizes,
-        x2_median_tlemmas_sizes,
-        solver_x1,
-        solver_x2,
-        out_path="seq_vs_par45_tlemmas_median_size.pdf",
-        log_scale=False,
-    )
-    create_tlemmas_scatter_plot(
-        x1_median_tlemmas_sizes,
-        x3_median_tlemmas_sizes,
-        solver_x1,
-        solver_x3,
-        out_path="seq_vs_par45_proj_atoms_tlemmas_median_size.pdf",
-        log_scale=False,
-    )
-    create_tlemmas_scatter_plot(
-        x1_median_tlemmas_sizes,
-        x4_median_tlemmas_sizes,
-        solver_x1,
-        solver_x4,
-        out_path="seq_vs_partition_tlemmas_median_size.pdf",
-        log_scale=False,
-    )
-
-    create_tlemmas_scatter_plot(
-        x2_median_tlemmas_sizes,
-        x3_median_tlemmas_sizes,
-        solver_x2,
-        solver_x3,
-        out_path="par45_vs_par45_proj_atoms_tlemmas_median_size.pdf",
-        log_scale=False,
-    )
-    create_tlemmas_scatter_plot(
-        x2_median_tlemmas_sizes,
-        x4_median_tlemmas_sizes,
-        solver_x2,
-        solver_x4,
-        out_path="par45_vs_partition_tlemmas_median_size.pdf",
-        log_scale=False,
-    )
-
-    create_tlemmas_scatter_plot(
-        x3_median_tlemmas_sizes,
-        x4_median_tlemmas_sizes,
-        solver_x3,
-        solver_x4,
-        out_path="par45_proj_vs_partition_tlemmas_median_size.pdf",
-        log_scale=False,
-    )
-
-    # Cactus plots
-    create_cactus_plot(
-        x1_times,
-        x2_times,
-        x1_label=solver_x1,
-        x2_label=solver_x2,
-        third=x3_times,
-        x3_label=solver_x3,
-        fourth=x4_times,
-        x4_label=solver_x4,
-        out_path="cactus_seq_vs_par45_vs_par45_proj_atoms_vs_partition_tlemmas_gen_time.pdf",
-    )
+    main()
