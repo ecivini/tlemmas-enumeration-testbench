@@ -8,7 +8,7 @@ import numpy as np
 import pysmt
 import pysmt.environment
 from pysmt.fnode import FNode
-from tasks.generate_tlemmas import read_formula
+from pysmt.shortcuts import read_smtlib
 
 RESULTS_TIME_KEY = "Total time"
 RESULTS_TLEMMAS_NUM_KEY = "Lemmas"
@@ -65,7 +65,10 @@ def get_current_results_times(
                     break
 
             if found is not None and found not in times:
-                times[found] = timeout
+                if os.path.basename(found) == "encoding":
+                    found = os.path.dirname(found)
+                if found not in times:
+                    times[found] = timeout
             elif found is None:
                 times[problem.split(os.sep)[-1].replace(".smt2", "")] = timeout
 
@@ -104,7 +107,7 @@ def get_tlemmas_from_logs(logs_path: str) -> list[FNode]:
     assert len(files) == 1, "multiple .smt2 files in {}: {}".format(dir_name, files)
     tlemmas_path = files[0]
 
-    tlemmas_and = read_formula(tlemmas_path)
+    tlemmas_and = read_smtlib(tlemmas_path)
     if tlemmas_and.is_and():
         return list(tlemmas_and.args())
     elif tlemmas_and.is_or():
