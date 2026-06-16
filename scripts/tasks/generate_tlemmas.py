@@ -6,7 +6,7 @@ import argparse
 import json
 import time
 from pathlib import Path
-from typing import Any, Literal, cast, get_args
+from typing import Any, Literal, get_args
 
 from enumerators.solvers import (
     DivideByPartialAllSMTStrategy,
@@ -18,6 +18,7 @@ from enumerators.solvers import (
     WithPartitioningWrapper,
     WithProjectionWrapper,
 )
+from enumerators.util.pysmt import SuspendTypeChecking
 from enumerators.walkers.normalizer import NormalizerWalker
 from pysmt.fnode import FNode
 from pysmt.shortcuts import And, read_smtlib, write_smtlib
@@ -28,16 +29,6 @@ DIVIDE_STRATEGIES: dict[str, DivideStrategy] = {
 }
 
 SOLVER = Literal["sequential", "parallel"]
-
-
-def read_formula(path: Path | str) -> FNode:
-    """Read an SMT-LIB formula from a file."""
-    try:
-        phi = cast(FNode, read_smtlib(str(path)))
-        return phi
-    except Exception as e:
-        print(f"[-] Failed to read formula {path}: {e}")
-        raise SystemExit(1) from e
 
 
 def create_solver(
@@ -177,13 +168,15 @@ def main() -> None:
     args = parser.parse_args()
 
     logger: dict = {}
-    formula = read_formula(args.formula)
+    with SuspendTypeChecking():
+        formula = read_smtlib(args.formula)
     atoms = list(formula.get_atoms())
 
-    if args.queries_dir is not None:
-        for query_file in sorted(args.queries_dir.glob("*.smt2")):
-            query = read_formula(query_file)
-            atoms.extend(query.get_atoms())
+    with SuspendTypeChecking():
+        if args.queries_dir is not None:
+            for query_file in sorted(args.queries_dir.glob("*.smt2")):
+                query = read_smtlib(query_file)
+                atoms.extend(query.get_atoms())
 
     solver = create_solver(
         solver_type=args.solver,
