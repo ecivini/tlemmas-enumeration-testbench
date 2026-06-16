@@ -34,7 +34,7 @@ dependencies = [
     "pydot==1.4.2",
     "pyparsing==3.3.2",
     "PySDD==1.0.0",
-    "PySMT>=0.9.7.dev431",
+    "PySMT==0.9.7.dev333",
     "python-dateutil==2.9.0.post0",
     "python-dotenv==1.0.1",
     "PyYAML==6.0.3",
@@ -60,11 +60,3 @@ line-length = 88
 target-version = "py311"
 select = ["E", "F", "I"]
 ignore = []
-
-[tool.uv.sources]
-tlemmas-enumeration = { path = "../tlemmas-enumeration" }
-
-[dependency-groups]
-dev = [
-    "tlemmas-enumeration",
-]
