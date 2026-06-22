@@ -175,7 +175,7 @@ def main() -> None:
     with SuspendTypeChecking():
         if args.queries_dir is not None:
             for query_file in sorted(args.queries_dir.glob("*.smt2")):
-                query = read_smtlib(query_file)
+                query = read_smtlib(str(query_file))
                 atoms.extend(query.get_atoms())
 
     solver = create_solver(
