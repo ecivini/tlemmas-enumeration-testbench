@@ -169,7 +169,7 @@ def main() -> None:
 
     logger: dict = {}
     with SuspendTypeChecking():
-        formula = read_smtlib(args.formula)
+        formula = read_smtlib(str(args.formula))
     atoms = list(formula.get_atoms())
 
     with SuspendTypeChecking():
