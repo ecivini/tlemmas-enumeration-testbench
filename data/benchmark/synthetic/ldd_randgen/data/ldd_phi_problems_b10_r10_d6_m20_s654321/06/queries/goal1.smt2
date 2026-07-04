@@ -1,0 +1,5 @@
+(set-logic QF_LIA)
+(declare-fun x0 () Int)
+(declare-fun x3 () Int)
+(assert (let ((.def_0 (+ x3 x0))) (let ((.def_1 (<= 1 .def_0))) .def_1)))
+(check-sat)

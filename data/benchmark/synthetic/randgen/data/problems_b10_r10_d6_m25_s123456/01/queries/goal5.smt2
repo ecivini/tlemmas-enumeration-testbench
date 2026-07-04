@@ -1,0 +1,5 @@
+(set-logic QF_RDL)
+(declare-fun x7 () Real)
+(declare-fun A7 () Bool)
+(assert (let ((.def_0 (not A7))) (let ((.def_1 (<= 0.0 x7))) (let ((.def_2 (and .def_1 .def_0))) .def_2))))
+(check-sat)

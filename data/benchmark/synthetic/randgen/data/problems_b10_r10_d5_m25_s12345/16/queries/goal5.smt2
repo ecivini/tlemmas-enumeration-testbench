@@ -1,0 +1,7 @@
+(set-logic QF_LRA)
+(declare-fun x5 () Real)
+(declare-fun x0 () Real)
+(declare-fun x1 () Real)
+(declare-fun x4 () Real)
+(assert (let ((.def_0 (* 4378586683195076.0 x0))) (let ((.def_1 (* 2510958317663009.0 x5))) (let ((.def_2 (+ .def_1 .def_0))) (let ((.def_3 (<= .def_2 7571626180407942.0))) (let ((.def_4 (<= x4 1.0))) (let ((.def_5 (<= x1 1.0))) (let ((.def_6 (and .def_5 .def_4 .def_3))) .def_6))))))))
+(check-sat)

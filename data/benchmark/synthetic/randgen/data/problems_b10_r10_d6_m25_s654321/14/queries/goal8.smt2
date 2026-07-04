@@ -1,0 +1,5 @@
+(set-logic QF_RDL)
+(declare-fun A7 () Bool)
+(declare-fun x9 () Real)
+(assert (let ((.def_0 (<= (/ 2079223866126545.0 953798131989068.0) x9))) (let ((.def_1 (not .def_0))) (let ((.def_2 (<= 0.0 x9))) (let ((.def_3 (not .def_2))) (let ((.def_4 (and .def_3 .def_1 A7))) .def_4))))))
+(check-sat)

@@ -1,0 +1,6 @@
+(set-logic QF_IDL)
+(declare-fun A0 () Bool)
+(declare-fun A1 () Bool)
+(declare-fun x3 () Int)
+(assert (let ((.def_0 (<= 0 x3))) (let ((.def_1 (not A1))) (let ((.def_2 (and .def_1 .def_0 A0))) .def_2))))
+(check-sat)

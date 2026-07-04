@@ -1,0 +1,8 @@
+(set-logic QF_LRA)
+(declare-fun x1 () Real)
+(declare-fun x2 () Real)
+(declare-fun x3 () Real)
+(declare-fun x6 () Real)
+(declare-fun A8 () Bool)
+(assert (let ((.def_0 (* 486637533289644.0 x1))) (let ((.def_1 (* 3550110532188704.0 x3))) (let ((.def_2 (+ .def_1 .def_0))) (let ((.def_3 (* 127493819249796.0 x2))) (let ((.def_4 (+ .def_3 .def_2))) (let ((.def_5 (* 537410296973155.0 x6))) (let ((.def_6 (+ .def_5 .def_4))) (let ((.def_7 (<= (- 7557121648598908.0) .def_6))) (let ((.def_8 (and .def_7 A8))) .def_8))))))))))
+(check-sat)
