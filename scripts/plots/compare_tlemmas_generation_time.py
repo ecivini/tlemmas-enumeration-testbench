@@ -9,7 +9,6 @@ from typing import Any, Sequence
 
 import matplotlib
 import matplotlib.axes as pltaxes
-import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import ticker
 
@@ -23,6 +22,7 @@ matplotlib.rcParams.update(
     }
 )
 
+import matplotlib.pyplot as plt  # noqa: E402
 
 RESULTS_TIME_KEY = "Total time"
 RESULTS_TLEMMAS_NUM_KEY = "Lemmas"
@@ -245,7 +245,6 @@ def create_scatter_plot(
     x_label: str,
     y_data: dict[str, float],
     y_label: str,
-    lower_threshold: float = 1.0,
     timeout: float | None = None,
     label_suffix: str = "",
     log_scale: bool = True,
