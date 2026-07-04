@@ -217,6 +217,7 @@ __marimo__/
 
 # Ignore results/ folder
 results/
+results_old/
 
 # Images
 *.png
