@@ -29,8 +29,6 @@ RESULTS_TLEMMAS_NUM_KEY = "Lemmas"
 RESULTS_TLEMMAS_MEDIAN_SIZE_KEY = "Median T-lemma size"
 TICK_FONTSIZE = 22
 
-SYNTHETIC_THEORY_DIRS = {"qua", "qui", "quo"}
-
 
 RunData = tuple[dict[str, float], dict[str, float], dict[str, float]]
 
@@ -68,8 +66,6 @@ def _normalize_problem_name(problem: str, run_dir: Path) -> str:
     if parts[:2] == ("data", "benchmark"):
         parts = parts[2:]
         if parts and parts[0] == benchmark_name:
-            parts = parts[1:]
-        elif parts and parts[0] in SYNTHETIC_THEORY_DIRS:
             parts = parts[1:]
 
     return str(Path(*parts)) if parts else path.name
