@@ -1,22 +1,57 @@
 import argparse
 import itertools
 import json
+import math
 import os
 import re
 from pathlib import Path
 from typing import Any, Sequence
 
-import matplotlib.pyplot as plt
+import matplotlib
 import numpy as np
+from matplotlib import ticker
+
+matplotlib.use("pgf")
+matplotlib.rcParams.update(
+    {
+        "pgf.texsystem": "pdflatex",
+        "font.family": "serif",
+        "text.usetex": True,
+        "pgf.rcfonts": False,
+    }
+)
+
+import matplotlib.pyplot as plt  # noqa: E402
 
 RESULTS_TIME_KEY = "Total time"
 RESULTS_TLEMMAS_NUM_KEY = "Lemmas"
 RESULTS_TLEMMAS_MEDIAN_SIZE_KEY = "Median T-lemma size"
+TICK_FONTSIZE = 22
 
 SYNTHETIC_THEORY_DIRS = {"qua", "qui", "quo"}
 
 
 RunData = tuple[dict[str, float], dict[str, float], dict[str, float]]
+
+
+def _latex_escape(label: str) -> str:
+    replacements = {
+        "\\": r"\textbackslash{}",
+        "&": r"\&",
+        "%": r"\%",
+        "$": r"\$",
+        "#": r"\#",
+        "_": r"\_",
+        "{": r"\{",
+        "}": r"\}",
+        "~": r"\textasciitilde{}",
+        "^": r"\textasciicircum{}",
+    }
+    return "".join(replacements.get(char, char) for char in label)
+
+
+def _method_label(label: str) -> str:
+    return rf"\textsf{{{_latex_escape(label)}}}"
 
 
 def _normalize_problem_name(problem: str, run_dir: Path) -> str:
@@ -91,10 +126,96 @@ def _file_label(label: str) -> str:
     return re.sub(r"_+", "_", re.sub(r"[^A-Za-z0-9]+", "_", label)).strip("_").lower()
 
 
+def _plot_value(value: float) -> float:
+    return max(value, 1.0)
+
+
+def _add_diagonal_guides(ax: plt.Axes, limit: float) -> None:
+    main_line_style = {
+        "color": "black",
+        "linestyle": ":",
+        "linewidth": 1.8,
+        "alpha": 0.85,
+        "zorder": 3,
+    }
+    factor_line_style = {
+        "color": "black",
+        "linestyle": ":",
+        "linewidth": 1.2,
+        "alpha": 0.45,
+        "zorder": 2,
+    }
+
+    ax.axline(
+        (1, 1),
+        (10, 10),
+        **main_line_style,
+    )
+
+    max_factor_exponent = min(10, int(math.log10(limit)))
+    for exponent in range(1, max_factor_exponent + 1):
+        p1 = 10**exponent
+        p2 = 10 ** (exponent + 1)
+        for start, end in (((p1, 1), (p2, 10)), ((1, p1), (10, p2))):
+            ax.axline(
+                start,
+                end,
+                **factor_line_style,
+            )
+
+
+def _set_matching_axis_limits_and_ticks(
+    ax: plt.Axes,
+    plot_min: float,
+    plot_max: float,
+    log_scale: bool,
+) -> None:
+    axis_max = plot_max * 1.1
+
+    ax.set_xlim(left=plot_min, right=axis_max)
+    ax.set_ylim(bottom=plot_min, top=axis_max)
+
+    if log_scale:
+        min_exponent = math.ceil(math.log10(plot_min))
+        max_exponent = math.floor(math.log10(axis_max))
+        exponents = range(min_exponent, max_exponent + 1)
+        ticks = [10**exponent for exponent in exponents]
+        tick_labels = [rf"$10^{{{exponent}}}$" for exponent in exponents]
+    else:
+        locator = ticker.MaxNLocator(nbins="auto")
+        ticks = [
+            tick
+            for tick in locator.tick_values(plot_min, axis_max)
+            if plot_min <= tick <= axis_max
+        ]
+        tick_labels = [f"{tick:g}" for tick in ticks]
+
+    ax.set_xticks(ticks)
+    ax.set_yticks(ticks)
+    ax.set_xticklabels(tick_labels)
+    ax.set_yticklabels(tick_labels)
+    ax.set_box_aspect(1)
+
+
+def _set_tick_fontsize(ax: plt.Axes) -> None:
+    ax.tick_params(
+        axis="both",
+        which="major",
+        labelsize=TICK_FONTSIZE,
+    )
+    ax.tick_params(
+        axis="both",
+        which="minor",
+        labelsize=TICK_FONTSIZE,
+    )
+
+
 def create_cactus_plot(
     datasets: Sequence[tuple[dict[str, float], str]],
     timeout: float,
     out_path: Path,
+    legend_loc: str = "center left",
+    legend_bbox_to_anchor: tuple[float, float] | None = None,
 ) -> None:
     markers = ["o", "^", "s", "D", "v", "<", ">", "p", "*", "h"]
 
@@ -108,24 +229,27 @@ def create_cactus_plot(
         if set(data) != keys:
             raise ValueError(f"{label} does not have the same problem keys")
 
-    plt.figure(figsize=(9, 6))
+    _, ax = plt.subplots(figsize=(6, 5))
     for idx, (data, label) in enumerate(datasets):
         sorted_times = sorted(min(data[problem], timeout) for problem in keys)
         x_values = np.arange(1, len(sorted_times) + 1)
-        plt.plot(
+        ax.plot(
             x_values,
             sorted_times,
-            label=label,
+            label=_method_label(label),
             marker=markers[idx % len(markers)],
             markersize=2,
         )
 
-    plt.xlabel("Number of problems solved", fontsize=24)
-    plt.ylabel("Time (s)", fontsize=24)
-    plt.xticks(fontsize=18)
-    plt.yticks(fontsize=18)
-    plt.grid(True)
-    plt.legend(fontsize=18)
+    ax.axhline(timeout, linestyle="--", color="black", alpha=0.5)
+    ax.set_xlabel("Number of problems solved", fontsize=24)
+    ax.set_ylabel("Time (s)", fontsize=24)
+    _set_tick_fontsize(ax)
+    ax.grid(True)
+    legend_kwargs: dict[str, Any] = {"fontsize": 18, "loc": legend_loc}
+    if legend_bbox_to_anchor is not None:
+        legend_kwargs["bbox_to_anchor"] = legend_bbox_to_anchor
+    ax.legend(**legend_kwargs)
     plt.tight_layout()
     plt.savefig(out_path)
     plt.close()
@@ -157,20 +281,23 @@ def create_scatter_plot(
             x_is_timeout = xv >= timeout
             y_is_timeout = yv >= timeout
             if x_is_timeout or y_is_timeout:
-                timeout_x.append(timeout if x_is_timeout else xv)
-                timeout_y.append(timeout if y_is_timeout else yv)
+                timeout_x.append(_plot_value(timeout if x_is_timeout else xv))
+                timeout_y.append(_plot_value(timeout if y_is_timeout else yv))
                 continue
-        completed_x.append(xv)
-        completed_y.append(yv)
+        completed_x.append(_plot_value(xv))
+        completed_y.append(_plot_value(yv))
 
     data_values = completed_x + completed_y + timeout_x + timeout_y
     if not data_values:
-        plot_max = timeout if timeout is not None else 1.0
+        plot_max = _plot_value(timeout if timeout is not None else 1.0)
     else:
-        plot_max = timeout if timeout is not None else float(max(data_values))
+        plot_max = _plot_value(
+            timeout if timeout is not None else float(max(data_values))
+        )
     plot_max = max(plot_max, 1.0)
+    plot_min = 1.0
 
-    _, ax = plt.subplots(figsize=(7, 7))
+    _, ax = plt.subplots(figsize=(5, 5))
 
     ax.scatter(
         x=completed_x,
@@ -195,35 +322,23 @@ def create_scatter_plot(
             marker="X",
         )
 
-    ax.plot(
-        [1e-2, plot_max],
-        [1e-2, plot_max],
-        label="y = x",
-        zorder=2,
-        color="gray",
-        linestyle="--",
-    )
-
     if timeout is not None:
-        ax.axvline(timeout, linestyle="--", color="gray")
-        ax.axhline(timeout, linestyle="--", color="gray")
+        ax.axvline(timeout, linestyle="--", color="black", alpha=0.5)
+        ax.axhline(timeout, linestyle="--", color="black", alpha=0.5)
 
     if log_scale:
-        ax.set_xscale("symlog", linthresh=10)
-        ax.set_yscale("symlog", linthresh=10)
+        ax.set_xscale("log")
+        ax.set_yscale("log")
     else:
         ax.set_xscale("linear")
         ax.set_yscale("linear")
-    ax.set_aspect("equal")
+    _set_matching_axis_limits_and_ticks(ax, plot_min, plot_max, log_scale)
 
-    ax.set_xlim(left=1e-2, right=plot_max * 1.1)
-    ax.set_ylim(bottom=1e-2, top=plot_max * 1.1)
+    _add_diagonal_guides(ax, plot_max)
 
-    ax.set_xlabel(f"{x_label}{label_suffix}", fontsize=24)
-    ax.set_ylabel(f"{y_label}{label_suffix}", fontsize=24)
-    plt.xticks(fontsize=18)
-    plt.yticks(fontsize=18)
-    ax.grid(True, which="both", linestyle=":", linewidth=0.5)
+    ax.set_xlabel(f"{_method_label(x_label)}{label_suffix}", fontsize=24)
+    ax.set_ylabel(f"{_method_label(y_label)}{label_suffix}", fontsize=24)
+    _set_tick_fontsize(ax)
 
     plt.tight_layout()
     plt.savefig(out_path)
@@ -347,6 +462,11 @@ def main() -> None:
         median_sizes.append(run_median_sizes)
 
     cactus_times = _align_common_keys(times)
+    cactus_legend_loc = "center left"
+    cactus_legend_bbox_to_anchor = None
+    if args.out_dir.name == "planning":
+        cactus_legend_loc = "center right"
+        cactus_legend_bbox_to_anchor = (1.0, 0.6)
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -362,6 +482,8 @@ def main() -> None:
         [(cactus_times[i], labels[i]) for i in range(len(labels))],
         timeout=args.timeout,
         out_path=args.out_dir / "cactus_all_methods.pdf",
+        legend_loc=cactus_legend_loc,
+        legend_bbox_to_anchor=cactus_legend_bbox_to_anchor,
     )
     print_method_stats(labels, times, timeout=args.timeout)
 
