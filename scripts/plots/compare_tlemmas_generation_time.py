@@ -123,11 +123,11 @@ def _file_label(label: str) -> str:
     return re.sub(r"_+", "_", re.sub(r"[^A-Za-z0-9]+", "_", label)).strip("_").lower()
 
 
-def _plot_value(value: float) -> float:
-    return max(value, 1.0)
-
-
-def _add_diagonal_guides(ax: pltaxes.Axes, limit: float) -> None:
+def _add_diagonal_guides(
+    ax: pltaxes.Axes,
+    axis_max: float,
+    log_scale: bool,
+) -> None:
     main_line_style = {
         "color": "black",
         "linestyle": ":",
@@ -143,33 +143,60 @@ def _add_diagonal_guides(ax: pltaxes.Axes, limit: float) -> None:
         "zorder": 2,
     }
 
-    ax.axline((1, 1), (10, 10), **main_line_style)
+    def to_axes_x(value: float) -> float:
+        return ax.transAxes.inverted().transform(
+            ax.transData.transform((value, 0.0))
+        )[0]
 
-    max_factor_exponent = min(10, int(math.log10(limit)))
+    ax.plot(
+        [0.0, 1.0],
+        [0.0, 1.0],
+        transform=ax.transAxes,
+        clip_on=True,
+        **main_line_style,
+    )
+
+    if not log_scale:
+        return
+
+    max_factor_exponent = min(10, int(math.log10(axis_max)))
+    one_coord = to_axes_x(1.0)
     for exponent in range(1, max_factor_exponent + 1):
-        p1 = 10**exponent
-        p2 = 10 ** (exponent + 1)
-        for start, end in (((p1, 1), (p2, 10)), ((1, p1), (10, p2))):
-            ax.axline(start, end, **factor_line_style)
+        factor = 10**exponent
+        if factor > axis_max:
+            break
+
+        offset = to_axes_x(float(factor)) - one_coord
+        if offset >= 1.0:
+            break
+
+        for x_values, y_values in (
+            ([offset, 1.0], [0.0, 1.0 - offset]),
+            ([0.0, 1.0 - offset], [offset, 1.0]),
+        ):
+            ax.plot(
+                x_values,
+                y_values,
+                transform=ax.transAxes,
+                clip_on=True,
+                **factor_line_style,
+            )
 
 
 def _set_matching_axis_limits_and_ticks(
     ax: pltaxes.Axes,
     plot_min: float,
-    plot_max: float,
+    axis_max: float,
     log_scale: bool,
 ) -> None:
-    axis_max = plot_max * 1.1
-
     ax.set_xlim(left=plot_min, right=axis_max)
     ax.set_ylim(bottom=plot_min, top=axis_max)
 
     if log_scale:
-        min_exponent = math.ceil(math.log10(plot_min))
         max_exponent = math.floor(math.log10(axis_max))
-        exponents = range(min_exponent, max_exponent + 1)
-        ticks = [10**exponent for exponent in exponents]
-        tick_labels = [rf"$10^{{{exponent}}}$" for exponent in exponents]
+        exponents = range(0, max_exponent + 1)
+        ticks = [0.0] + [10**exponent for exponent in exponents]
+        tick_labels = ["0"] + [rf"$10^{{{exponent}}}$" for exponent in exponents]
     else:
         locator = ticker.MaxNLocator(nbins="auto")
         ticks = [
@@ -261,21 +288,19 @@ def create_scatter_plot(
             x_is_timeout = xv >= timeout
             y_is_timeout = yv >= timeout
             if x_is_timeout or y_is_timeout:
-                timeout_x.append(_plot_value(timeout if x_is_timeout else xv))
-                timeout_y.append(_plot_value(timeout if y_is_timeout else yv))
+                timeout_x.append(timeout if x_is_timeout else xv)
+                timeout_y.append(timeout if y_is_timeout else yv)
                 continue
-        completed_x.append(_plot_value(xv))
-        completed_y.append(_plot_value(yv))
+        completed_x.append(xv)
+        completed_y.append(yv)
 
     data_values = completed_x + completed_y + timeout_x + timeout_y
-    if not data_values:
-        plot_max = _plot_value(timeout if timeout is not None else 1.0)
-    else:
-        plot_max = _plot_value(
-            timeout if timeout is not None else float(max(data_values))
-        )
-    plot_max = max(plot_max, 1.0)
-    plot_min = 1.0
+    plot_max = max(
+        timeout if timeout is not None else max(data_values, default=1.0),
+        1.0,
+    )
+    axis_max = plot_max * 1.1
+    plot_min = 0.0
 
     _, ax = plt.subplots(figsize=(5, 5))
 
@@ -307,14 +332,14 @@ def create_scatter_plot(
         ax.axhline(timeout, linestyle="--", color="black", alpha=0.5)
 
     if log_scale:
-        ax.set_xscale("log")
-        ax.set_yscale("log")
+        ax.set_xscale("symlog", linthresh=1.0, base=10)
+        ax.set_yscale("symlog", linthresh=1.0, base=10)
     else:
         ax.set_xscale("linear")
         ax.set_yscale("linear")
-    _set_matching_axis_limits_and_ticks(ax, plot_min, plot_max, log_scale)
+    _set_matching_axis_limits_and_ticks(ax, plot_min, axis_max, log_scale)
 
-    _add_diagonal_guides(ax, plot_max)
+    _add_diagonal_guides(ax, axis_max, log_scale)
 
     ax.set_xlabel(f"{_method_label(x_label)}{label_suffix}", fontsize=24)
     ax.set_ylabel(f"{_method_label(y_label)}{label_suffix}", fontsize=24)
