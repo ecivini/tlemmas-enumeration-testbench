@@ -55,9 +55,14 @@ def _method_label(label: str) -> str:
 
 def _normalize_problem_name(problem: str, run_dir: Path) -> str:
     path = Path(os.path.normpath(problem))
-    if path.name == "encoding.smt2":
+    if path.name in {"logs.json", "tlemmas.smt2"}:
         path = path.parent
-    else:
+
+    if path.suffix == ".smt2" and path.stem == "encoding":
+        raise ValueError(f"Unsupported legacy formula error key: {problem}")
+    if path.name == "problem.smt2":
+        path = path.parent
+    elif path.suffix == ".smt2":
         path = path.with_suffix("")
 
     parts = path.parts

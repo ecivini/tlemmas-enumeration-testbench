@@ -52,14 +52,8 @@ def compute_tlemmas_stats(tlemmas: list[FNode]) -> tuple[float, float]:
 
 
 def find_tlemmas_path(logs_path: Path) -> Path | None:
-    files = sorted(
-        path
-        for path in logs_path.parent.iterdir()
-        if path.suffix == ".smt2" and path.is_file()
-    )
-    if len(files) != 1:
-        return None
-    return files[0]
+    tlemmas_path = logs_path.parent / "tlemmas.smt2"
+    return tlemmas_path if tlemmas_path.is_file() else None
 
 
 def get_tlemmas_from_path(tlemmas_path: Path) -> list[FNode]:
@@ -104,7 +98,7 @@ def process_logs_path(
     tlemmas_path = find_tlemmas_path(logs_path)
     if tlemmas_path is None:
         report.skipped += 1
-        report.warn(logs_path, "expected exactly one .smt2 file next to logs.json")
+        report.warn(logs_path, "missing tlemmas.smt2 next to logs.json")
         return
 
     try:
