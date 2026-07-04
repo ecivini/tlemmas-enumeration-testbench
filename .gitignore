@@ -217,6 +217,8 @@ __marimo__/
 
 # Ignore results/ folder
 results/
+results_migrated/
+results_backup*/
 results_old/
 
 # Images

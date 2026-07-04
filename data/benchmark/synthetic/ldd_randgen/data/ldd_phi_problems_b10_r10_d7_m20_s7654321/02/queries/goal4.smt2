@@ -1,0 +1,8 @@
+(set-logic QF_LIA)
+(declare-fun x0 () Int)
+(declare-fun x3 () Int)
+(declare-fun x4 () Int)
+(declare-fun x9 () Int)
+(declare-fun A1 () Bool)
+(assert (let ((.def_0 (* (- 1) x3))) (let ((.def_1 (+ x4 .def_0))) (let ((.def_2 (<= 1 .def_1))) (let ((.def_3 (+ x0 x9))) (let ((.def_4 (<= 1 .def_3))) (let ((.def_5 (and .def_4 A1 .def_2))) .def_5)))))))
+(check-sat)

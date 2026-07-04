@@ -44,8 +44,10 @@ class Config:
         self.allsmt_processes = str(raw["allsmt_processes"])
         self.timeout = int(raw["timeout"])
         self.memory_bytes = int(raw["memory"]) * 1024 * 1024
-        self.tlemmas_dir = Path(raw["tlemmas_dir"])
-        self.gt_tlemmas_dir = Path(raw["gt_tlemmas_dir"])
+        self.tlemmas_dir = Path(raw["tlemmas_dir"]) if raw["tlemmas_dir"] else None
+        self.gt_tlemmas_dir = (
+            Path(raw["gt_tlemmas_dir"]) if raw["gt_tlemmas_dir"] else None
+        )
         self.check_workers = str(raw["tlemmas_check_parallel_workers"])
         self.check_proj_vars = str(
             raw["tlemmas_check_num_projected_vars_per_partial_model"]
@@ -85,9 +87,12 @@ def execute_task(
     """Shared wrapper to execute a command and handle errors safely."""
     try:
         rc, stderr = run_cmd(command, config.timeout, config.memory_bytes)
-        if rc != 0 or stderr:
+        if rc != 0:
             print(f"[-] Failed ({formula}): {stderr.strip()}")
             return formula, stderr.strip()
+
+        if stderr:
+            print(f"[!] Stderr ({formula}): {stderr.strip()}")
 
         print(f"[+] Done: {formula}")
         return formula, None
@@ -106,10 +111,7 @@ def task_gen(
     formula, benchmark_root, queries_dir = item
     print(f"[+] Generating T-lemmas: {formula}")
 
-    if queries_dir is not None:
-        rel = formula.parent.relative_to(benchmark_root)
-    else:
-        rel = formula.relative_to(benchmark_root).with_suffix("")
+    rel = formula.parent.relative_to(benchmark_root)
     cmd = [
         "python3",
         "scripts/tasks/generate_tlemmas.py",
@@ -137,20 +139,29 @@ def task_gen(
 
 
 def task_check(
-    formula: Path, config: Config, output_dir: Path, tlemmas: dict, gt_tlemmas: dict
+    item: tuple[Path, Path],
+    config: Config,
+    output_dir: Path,
+    tlemmas: dict[str, Path],
+    gt_tlemmas: dict[str, Path],
 ) -> tuple[Path, str | None]:
+    formula, benchmark_root = item
     print(f"[+] Checking T-lemmas: {formula}")
-    f_str = str(formula)
 
-    t_path = next((p for k, p in tlemmas.items() if k in f_str), None)
-    gt_path = next((p for k, p in gt_tlemmas.items() if k in f_str), None)
+    instance_id = formula.parent.relative_to(benchmark_root)
+    instance_key = instance_id.as_posix()
+    t_path = tlemmas.get(instance_key)
+    if t_path is None:
+        return formula, f"missing T-lemmas for {instance_key}"
+
+    gt_path = gt_tlemmas.get(instance_key)
     gt_logs = str(gt_path.parent / "logs.json") if gt_path else ""
 
     cmd = [
         "python3",
         "scripts/tasks/tlemmas_check.py",
         str(formula),
-        str(output_dir / formula.with_suffix("")),
+        str(output_dir / instance_id),
         str(t_path),
         config.check_workers,
         config.check_proj_vars,
@@ -159,21 +170,26 @@ def task_check(
     return execute_task(cmd, formula, config)
 
 
-def _default_file_filter(_: Path) -> bool:
-    return True
+def _problem_file_filter(path: Path) -> bool:
+    return path.name == "problem.smt2"
 
 
 def _default_output_path(f: Path, p: Path, out: Path) -> Path:
-    return out / f.relative_to(p).with_suffix("")
+    return out / f.parent.relative_to(p)
+
+
+def _queries_dir_for(formula: Path) -> Path | None:
+    queries_dir = formula.parent / "queries"
+    return queries_dir if queries_dir.is_dir() else None
 
 
 def get_pending_items(
     paths: list[str],
     output_dir: Path,
-    file_filter: Callable[[Path], bool] = _default_file_filter,
+    file_filter: Callable[[Path], bool] = _problem_file_filter,
     output_path_fn: Callable[[Path, Path, Path], Path] = _default_output_path,
 ) -> list[tuple[Path, Path]]:
-    """Discover pending .smt2 files under benchmark paths.
+    """Discover pending migrated problem.smt2 files under benchmark paths.
 
     Args:
         paths: Benchmark directories to scan.
@@ -188,7 +204,7 @@ def get_pending_items(
 
     for root in paths:
         p = Path(root)
-        for f in p.rglob("*.smt2"):
+        for f in p.rglob("problem.smt2"):
             if not file_filter(f):
                 continue
             out_path = output_path_fn(f, p, output_dir)
@@ -201,15 +217,14 @@ def get_pending_items(
     return items
 
 
-def index_tlemmas(base: Path) -> dict[str, Path]:
+def index_tlemmas(base: Path | None) -> dict[str, Path]:
     """Creates a normalized index of t-lemmas for fast matching."""
-    if not base.is_dir():
+    if base is None or not base.is_dir():
         return {}
 
     index = {}
-    for p in base.rglob("*.smt2"):
-        key = str(p.parent).replace(str(base), "").replace("data/benchmark/", "")
-        key = key.replace("/randgen", "").replace("/ldd_randgen", "")
+    for p in base.rglob("tlemmas.smt2"):
+        key = p.parent.relative_to(base).as_posix()
         index[key] = p
         print(f"[+] Indexed tlemma: {p}")
     return index
@@ -225,12 +240,6 @@ def parse_args() -> argparse.Namespace:
 
     sub.add_parser("tlemmas_check", help="Check T-lemma correctness.")
 
-    queries_gen = sub.add_parser(
-        "tlemmas_gen_queries",
-        help="Generate T-lemmas for instances with query formulas.",
-    )
-    add_gen_args(queries_gen)
-
     return parser.parse_args()
 
 
@@ -241,26 +250,17 @@ def main() -> None:
     output_dir = config.results / args.test_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    items: list[tuple[Path, Path, Path | None]] | list[Path]
+    items: list[tuple[Path, Path, Path | None]] | list[tuple[Path, Path]]
     worker: Callable
 
-    if args.task == "tlemmas_gen_queries":
-        raw = get_pending_items(
-            config.benchmarks,
-            output_dir,
-            lambda f: f.name == "encoding.smt2",
-            lambda f, p, out: out / f.parent.relative_to(p),
-        )
-        items = [(f, root, f.parent / "queries") for f, root in raw]
-        worker = partial(task_gen, config=config, output_dir=output_dir, args=args)
-    elif args.task == "tlemmas_gen":
+    if args.task == "tlemmas_gen":
         raw = get_pending_items(config.benchmarks, output_dir)
-        items = [(f, root, None) for f, root in raw]
+        items = [(f, root, _queries_dir_for(f)) for f, root in raw]
         worker = partial(task_gen, config=config, output_dir=output_dir, args=args)
     else:
         tlemmas = index_tlemmas(config.tlemmas_dir)
         gt_tlemmas = index_tlemmas(config.gt_tlemmas_dir)
-        items = [f for f, _ in get_pending_items(config.benchmarks, output_dir)]
+        items = get_pending_items(config.benchmarks, output_dir)
         worker = partial(
             task_check,
             config=config,

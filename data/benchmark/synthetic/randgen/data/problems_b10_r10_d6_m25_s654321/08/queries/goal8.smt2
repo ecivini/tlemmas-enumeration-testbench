@@ -1,0 +1,6 @@
+(set-logic QF_RDL)
+(declare-fun x6 () Real)
+(declare-fun x3 () Real)
+(declare-fun A2 () Bool)
+(assert (let ((.def_0 (<= 0.0 x6))) (let ((.def_1 (not A2))) (let ((.def_2 (<= x3 1.0))) (let ((.def_3 (not .def_2))) (let ((.def_4 (and .def_3 .def_1 .def_0))) .def_4))))))
+(check-sat)

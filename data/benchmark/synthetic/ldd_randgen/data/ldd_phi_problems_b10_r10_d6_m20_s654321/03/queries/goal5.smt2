@@ -1,0 +1,5 @@
+(set-logic QF_IDL)
+(declare-fun x6 () Int)
+(declare-fun A5 () Bool)
+(assert (let ((.def_0 (<= 1 x6))) (let ((.def_1 (<= x6 (- 1)))) (let ((.def_2 (not A5))) (let ((.def_3 (and .def_2 .def_1 .def_0))) .def_3)))))
+(check-sat)

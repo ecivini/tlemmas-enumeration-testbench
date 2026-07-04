@@ -1,0 +1,5 @@
+(set-logic QF_RDL)
+(declare-fun A3 () Bool)
+(declare-fun x4 () Real)
+(assert (let ((.def_0 (<= x4 (/ 2005418351019635.0 1629932520421618.0)))) (let ((.def_1 (and .def_0 A3))) .def_1)))
+(check-sat)

@@ -1,0 +1,6 @@
+(set-logic QF_RDL)
+(declare-fun x1 () Real)
+(declare-fun x9 () Real)
+(declare-fun x4 () Real)
+(assert (let ((.def_0 (<= x4 1.0))) (let ((.def_1 (not .def_0))) (let ((.def_2 (<= x9 1.0))) (let ((.def_3 (not .def_2))) (let ((.def_4 (<= 0.0 x1))) (let ((.def_5 (not .def_4))) (let ((.def_6 (and .def_5 .def_3 .def_1))) .def_6))))))))
+(check-sat)

@@ -17,6 +17,25 @@ $ make
 $ export TABULARALLSAT_PATH=$(pwd)/solver
 ```
 
+## Benchmark layout
+
+Benchmark inputs use one directory per instance:
+
+```text
+data/benchmark/<set>/<...>/<instance>/problem.smt2
+data/benchmark/<set>/<...>/<instance>/queries/*.smt2  # optional
+```
+
+Generated outputs mirror the instance directory directly:
+
+```text
+results/<run>/<set>/<...>/<instance>/tlemmas.smt2
+results/<run>/<set>/<...>/<instance>/logs.json
+```
+
+`tlemmas_gen` automatically uses the sibling `queries/` directory when present.
+The old `tlemmas_gen_queries` command is not supported.
+
 ## How to run
 
 ### Generating T-lemmas
