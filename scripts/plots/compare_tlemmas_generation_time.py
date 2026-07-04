@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any, Sequence
 
 import matplotlib
+import matplotlib.axes as pltaxes
+import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import ticker
 
@@ -21,7 +23,6 @@ matplotlib.rcParams.update(
     }
 )
 
-import matplotlib.pyplot as plt  # noqa: E402
 
 RESULTS_TIME_KEY = "Total time"
 RESULTS_TLEMMAS_NUM_KEY = "Lemmas"
@@ -130,7 +131,7 @@ def _plot_value(value: float) -> float:
     return max(value, 1.0)
 
 
-def _add_diagonal_guides(ax: plt.Axes, limit: float) -> None:
+def _add_diagonal_guides(ax: pltaxes.Axes, limit: float) -> None:
     main_line_style = {
         "color": "black",
         "linestyle": ":",
@@ -146,26 +147,18 @@ def _add_diagonal_guides(ax: plt.Axes, limit: float) -> None:
         "zorder": 2,
     }
 
-    ax.axline(
-        (1, 1),
-        (10, 10),
-        **main_line_style,
-    )
+    ax.axline((1, 1), (10, 10), **main_line_style)
 
     max_factor_exponent = min(10, int(math.log10(limit)))
     for exponent in range(1, max_factor_exponent + 1):
         p1 = 10**exponent
         p2 = 10 ** (exponent + 1)
         for start, end in (((p1, 1), (p2, 10)), ((1, p1), (10, p2))):
-            ax.axline(
-                start,
-                end,
-                **factor_line_style,
-            )
+            ax.axline(start, end, **factor_line_style)
 
 
 def _set_matching_axis_limits_and_ticks(
-    ax: plt.Axes,
+    ax: pltaxes.Axes,
     plot_min: float,
     plot_max: float,
     log_scale: bool,
@@ -197,17 +190,9 @@ def _set_matching_axis_limits_and_ticks(
     ax.set_box_aspect(1)
 
 
-def _set_tick_fontsize(ax: plt.Axes) -> None:
-    ax.tick_params(
-        axis="both",
-        which="major",
-        labelsize=TICK_FONTSIZE,
-    )
-    ax.tick_params(
-        axis="both",
-        which="minor",
-        labelsize=TICK_FONTSIZE,
-    )
+def _set_tick_fontsize(ax: pltaxes.Axes) -> None:
+    ax.tick_params(axis="both", which="major", labelsize=TICK_FONTSIZE)
+    ax.tick_params(axis="both", which="minor", labelsize=TICK_FONTSIZE)
 
 
 def create_cactus_plot(
@@ -434,7 +419,7 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help=(
             "Plot precomputed median T-lemma size from logs.json. "
-            "Run scripts/precompute_tlemma_stats.py first."
+            "Run scripts/plots/precompute_tlemma_stats.py first."
         ),
     )
     args = parser.parse_args()

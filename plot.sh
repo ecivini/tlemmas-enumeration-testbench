@@ -2,11 +2,11 @@
 set -euo pipefail
 
 python_bin="${PYTHON:-python3}"
-results_dir="${RESULTS_DIR:-results_standardized}"
+results_dir="${RESULTS_DIR:-results}"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-/tmp/tlemmas-matplotlib}"
 mkdir -p "$MPLCONFIGDIR"
 
-"$python_bin" scripts/precompute_tlemma_stats.py "$results_dir" --write
+"$python_bin" scripts/plots/precompute_tlemma_stats.py "$results_dir" --write
 
 configs=(
   "test_baseline"
