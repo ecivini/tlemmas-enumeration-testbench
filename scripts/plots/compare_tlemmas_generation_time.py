@@ -28,6 +28,7 @@ RESULTS_TIME_KEY = "Total time"
 RESULTS_TLEMMAS_NUM_KEY = "Lemmas"
 RESULTS_TLEMMAS_MEDIAN_SIZE_KEY = "Median T-lemma size"
 TICK_FONTSIZE = 22
+EXPORT_PAD_INCHES = 0.02
 
 
 RunData = tuple[dict[str, float], dict[str, float], dict[str, float]]
@@ -124,6 +125,19 @@ def _align_common_keys(
     ]
 
 
+def _pairwise_common_value_max(datasets: Sequence[dict[str, float]]) -> float | None:
+    value_max: float | None = None
+    for i, j in itertools.combinations(range(len(datasets)), 2):
+        common_keys = set(datasets[i]) & set(datasets[j])
+        for dataset_index in (i, j):
+            for key in common_keys:
+                value = datasets[dataset_index][key]
+                if value_max is None or value > value_max:
+                    value_max = value
+
+    return value_max
+
+
 def _file_label(label: str) -> str:
     return re.sub(r"_+", "_", re.sub(r"[^A-Za-z0-9]+", "_", label)).strip("_").lower()
 
@@ -193,15 +207,37 @@ def _set_matching_axis_limits_and_ticks(
     plot_min: float,
     axis_max: float,
     log_scale: bool,
+    integer_ticks: bool = False,
+    omit_upper_tick: bool = False,
 ) -> None:
     ax.set_xlim(left=plot_min, right=axis_max)
     ax.set_ylim(bottom=plot_min, top=axis_max)
+
+    def omit_top_tick_if_too_high(ticks: list[float]) -> list[float]:
+        if not omit_upper_tick or len(ticks) <= 2:
+            return ticks
+
+        tick_step = ticks[-1] - ticks[-2]
+        if axis_max - ticks[-1] <= tick_step * 0.25:
+            return ticks[:-1]
+        return ticks
 
     if log_scale:
         max_exponent = math.floor(math.log10(axis_max))
         exponents = range(0, max_exponent + 1)
         ticks = [0.0] + [10**exponent for exponent in exponents]
+        ticks = omit_top_tick_if_too_high(ticks)
         tick_labels = ["0"] + [rf"$10^{{{exponent}}}$" for exponent in exponents]
+        tick_labels = tick_labels[: len(ticks)]
+    elif integer_ticks:
+        locator = ticker.MaxNLocator(integer=True)
+        ticks = [
+            tick
+            for tick in locator.tick_values(plot_min, axis_max)
+            if plot_min <= tick <= axis_max
+        ]
+        ticks = omit_top_tick_if_too_high(ticks)
+        tick_labels = [f"{tick:g}" for tick in ticks]
     else:
         locator = ticker.MaxNLocator(nbins="auto")
         ticks = [
@@ -227,8 +263,8 @@ def create_cactus_plot(
     datasets: Sequence[tuple[dict[str, float], str]],
     timeout: float,
     out_path: Path,
-    legend_loc: str = "center left",
-    legend_bbox_to_anchor: tuple[float, float] | None = None,
+    legend_out_path: Path | None = None,
+    figsize: tuple[float, float] = (5, 5),
 ) -> None:
     markers = ["o", "^", "s", "D", "v", "<", ">", "p", "*", "h"]
 
@@ -242,30 +278,49 @@ def create_cactus_plot(
         if set(data) != keys:
             raise ValueError(f"{label} does not have the same problem keys")
 
-    _, ax = plt.subplots(figsize=(6, 5))
+    _, ax = plt.subplots(figsize=figsize)
+    legend_handles = []
+    legend_labels = []
     for idx, (data, label) in enumerate(datasets):
         sorted_times = sorted(min(data[problem], timeout) for problem in keys)
         x_values = np.arange(1, len(sorted_times) + 1)
-        ax.plot(
+        (line,) = ax.plot(
             x_values,
             sorted_times,
             label=_method_label(label),
             marker=markers[idx % len(markers)],
             markersize=2,
         )
+        legend_handles.append(line)
+        legend_labels.append(_method_label(label))
 
     ax.axhline(timeout, linestyle="--", color="black", alpha=0.5)
     ax.set_xlabel("Number of problems solved", fontsize=24)
     ax.set_ylabel("Time (s)", fontsize=24)
     _set_tick_fontsize(ax)
+    ax.set_box_aspect(1)
     ax.grid(True)
-    legend_kwargs: dict[str, Any] = {"fontsize": 18, "loc": legend_loc}
-    if legend_bbox_to_anchor is not None:
-        legend_kwargs["bbox_to_anchor"] = legend_bbox_to_anchor
-    ax.legend(**legend_kwargs)
     plt.tight_layout()
-    plt.savefig(out_path)
+    plt.savefig(out_path, bbox_inches="tight", pad_inches=EXPORT_PAD_INCHES)
     plt.close()
+
+    if legend_out_path is not None:
+        fig_legend = plt.figure(figsize=(3, 1.8))
+        fig_legend.legend(
+            legend_handles,
+            legend_labels,
+            loc="center",
+            fontsize=18,
+            frameon=False,
+            ncol=1,
+        )
+        fig_legend.savefig(
+            legend_out_path,
+            bbox_inches="tight",
+            pad_inches=0,
+            transparent=True,
+        )
+        plt.close(fig_legend)
 
 
 def create_scatter_plot(
@@ -276,6 +331,9 @@ def create_scatter_plot(
     timeout: float | None = None,
     label_suffix: str = "",
     log_scale: bool = True,
+    axis_max: float | None = None,
+    integer_ticks: bool = False,
+    omit_upper_tick: bool = False,
     out_path: Path = Path("scatter.pdf"),
 ) -> None:
     common_keys = sorted(set(x_data) & set(y_data))
@@ -304,7 +362,8 @@ def create_scatter_plot(
         timeout if timeout is not None else max(data_values, default=1.0),
         1.0,
     )
-    axis_max = plot_max * 1.1
+    if axis_max is None:
+        axis_max = plot_max * 1.1
     plot_min = 0.0
 
     _, ax = plt.subplots(figsize=(5, 5))
@@ -342,7 +401,14 @@ def create_scatter_plot(
     else:
         ax.set_xscale("linear")
         ax.set_yscale("linear")
-    _set_matching_axis_limits_and_ticks(ax, plot_min, axis_max, log_scale)
+    _set_matching_axis_limits_and_ticks(
+        ax,
+        plot_min,
+        axis_max,
+        log_scale,
+        integer_ticks=integer_ticks,
+        omit_upper_tick=omit_upper_tick,
+    )
 
     _add_diagonal_guides(ax, axis_max, log_scale)
 
@@ -351,7 +417,7 @@ def create_scatter_plot(
     _set_tick_fontsize(ax)
 
     plt.tight_layout()
-    plt.savefig(out_path)
+    plt.savefig(out_path, bbox_inches="tight", pad_inches=EXPORT_PAD_INCHES)
     plt.close()
 
 
@@ -363,6 +429,14 @@ def plot_all_pairs(
     timeout: float,
     out_dir: Path,
 ) -> None:
+    lemma_count_max = _pairwise_common_value_max(lemma_counts)
+    lemma_count_axis_max = max(lemma_count_max or 1.0, 1.0) * 1.1
+
+    median_size_max = _pairwise_common_value_max(median_sizes)
+    median_size_axis_max = (
+        max(median_size_max, 1.0) * 1.1 if median_size_max is not None else None
+    )
+
     for i, j in itertools.combinations(range(len(labels)), 2):
         left_label = labels[i]
         right_label = labels[j]
@@ -382,6 +456,8 @@ def plot_all_pairs(
             lemma_counts[j],
             right_label,
             timeout=None,
+            axis_max=lemma_count_axis_max,
+            omit_upper_tick=True,
             out_path=out_dir / f"{pair_tag}_tlemmas_num.pdf",
         )
 
@@ -393,6 +469,9 @@ def plot_all_pairs(
                 right_label,
                 timeout=None,
                 log_scale=False,
+                axis_max=median_size_axis_max,
+                integer_ticks=True,
+                omit_upper_tick=True,
                 out_path=out_dir / f"{pair_tag}_tlemmas_median_size.pdf",
             )
 
@@ -472,12 +551,9 @@ def main() -> None:
         median_sizes.append(run_median_sizes)
 
     cactus_times = _align_common_keys(times)
-    cactus_legend_loc = "center left"
-    cactus_legend_bbox_to_anchor = None
-    if args.out_dir.name == "planning":
-        cactus_legend_loc = "center right"
-        cactus_legend_bbox_to_anchor = (1.0, 0.6)
-
+    cactus_figsize = (
+        (5.35, 5) if args.out_dir.name == "numeric-planning-canonical" else (5, 5)
+    )
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
     plot_all_pairs(
@@ -492,8 +568,8 @@ def main() -> None:
         [(cactus_times[i], labels[i]) for i in range(len(labels))],
         timeout=args.timeout,
         out_path=args.out_dir / "cactus_all_methods.pdf",
-        legend_loc=cactus_legend_loc,
-        legend_bbox_to_anchor=cactus_legend_bbox_to_anchor,
+        legend_out_path=args.out_dir / "cactus_all_methods_legend.pdf",
+        figsize=cactus_figsize,
     )
     print_method_stats(labels, times, timeout=args.timeout)
 
