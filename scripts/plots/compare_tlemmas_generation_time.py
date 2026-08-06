@@ -28,6 +28,7 @@ RESULTS_TIME_KEY = "Total time"
 RESULTS_TLEMMAS_NUM_KEY = "Lemmas"
 RESULTS_TLEMMAS_MEDIAN_SIZE_KEY = "Median T-lemma size"
 TICK_FONTSIZE = 22
+EXPORT_PAD_INCHES = 0.02
 
 
 RunData = tuple[dict[str, float], dict[str, float], dict[str, float]]
@@ -262,8 +263,8 @@ def create_cactus_plot(
     datasets: Sequence[tuple[dict[str, float], str]],
     timeout: float,
     out_path: Path,
-    legend_loc: str = "center left",
-    legend_bbox_to_anchor: tuple[float, float] | None = None,
+    legend_out_path: Path | None = None,
+    figsize: tuple[float, float] = (5, 5),
 ) -> None:
     markers = ["o", "^", "s", "D", "v", "<", ">", "p", "*", "h"]
 
@@ -277,30 +278,49 @@ def create_cactus_plot(
         if set(data) != keys:
             raise ValueError(f"{label} does not have the same problem keys")
 
-    _, ax = plt.subplots(figsize=(6, 5))
+    _, ax = plt.subplots(figsize=figsize)
+    legend_handles = []
+    legend_labels = []
     for idx, (data, label) in enumerate(datasets):
         sorted_times = sorted(min(data[problem], timeout) for problem in keys)
         x_values = np.arange(1, len(sorted_times) + 1)
-        ax.plot(
+        (line,) = ax.plot(
             x_values,
             sorted_times,
             label=_method_label(label),
             marker=markers[idx % len(markers)],
             markersize=2,
         )
+        legend_handles.append(line)
+        legend_labels.append(_method_label(label))
 
     ax.axhline(timeout, linestyle="--", color="black", alpha=0.5)
     ax.set_xlabel("Number of problems solved", fontsize=24)
     ax.set_ylabel("Time (s)", fontsize=24)
     _set_tick_fontsize(ax)
+    ax.set_box_aspect(1)
     ax.grid(True)
-    legend_kwargs: dict[str, Any] = {"fontsize": 18, "loc": legend_loc}
-    if legend_bbox_to_anchor is not None:
-        legend_kwargs["bbox_to_anchor"] = legend_bbox_to_anchor
-    ax.legend(**legend_kwargs)
     plt.tight_layout()
-    plt.savefig(out_path)
+    plt.savefig(out_path, bbox_inches="tight", pad_inches=EXPORT_PAD_INCHES)
     plt.close()
+
+    if legend_out_path is not None:
+        fig_legend = plt.figure(figsize=(3, 1.8))
+        fig_legend.legend(
+            legend_handles,
+            legend_labels,
+            loc="center",
+            fontsize=18,
+            frameon=False,
+            ncol=1,
+        )
+        fig_legend.savefig(
+            legend_out_path,
+            bbox_inches="tight",
+            pad_inches=0,
+            transparent=True,
+        )
+        plt.close(fig_legend)
 
 
 def create_scatter_plot(
@@ -397,7 +417,7 @@ def create_scatter_plot(
     _set_tick_fontsize(ax)
 
     plt.tight_layout()
-    plt.savefig(out_path)
+    plt.savefig(out_path, bbox_inches="tight", pad_inches=EXPORT_PAD_INCHES)
     plt.close()
 
 
@@ -531,12 +551,9 @@ def main() -> None:
         median_sizes.append(run_median_sizes)
 
     cactus_times = _align_common_keys(times)
-    cactus_legend_loc = "center left"
-    cactus_legend_bbox_to_anchor = None
-    if args.out_dir.name == "planning":
-        cactus_legend_loc = "center right"
-        cactus_legend_bbox_to_anchor = (1.0, 0.6)
-
+    cactus_figsize = (
+        (5.35, 5) if args.out_dir.name == "numeric-planning-canonical" else (5, 5)
+    )
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
     plot_all_pairs(
@@ -551,8 +568,8 @@ def main() -> None:
         [(cactus_times[i], labels[i]) for i in range(len(labels))],
         timeout=args.timeout,
         out_path=args.out_dir / "cactus_all_methods.pdf",
-        legend_loc=cactus_legend_loc,
-        legend_bbox_to_anchor=cactus_legend_bbox_to_anchor,
+        legend_out_path=args.out_dir / "cactus_all_methods_legend.pdf",
+        figsize=cactus_figsize,
     )
     print_method_stats(labels, times, timeout=args.timeout)
 
