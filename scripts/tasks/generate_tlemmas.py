@@ -8,7 +8,9 @@ import time
 from pathlib import Path
 from typing import Any, Literal, get_args
 
-from enumerators.solvers import (
+from pysmt.fnode import FNode
+from pysmt.shortcuts import And, read_smtlib, write_smtlib
+from tlemma_enum.solvers import (
     DivideByPartialAllSMTStrategy,
     DivideByProjectedEnumerationStrategy,
     DivideStrategy,
@@ -18,10 +20,8 @@ from enumerators.solvers import (
     WithPartitioningWrapper,
     WithProjectionWrapper,
 )
-from enumerators.util.pysmt import SuspendTypeChecking
-from enumerators.walkers.normalizer import NormalizerWalker
-from pysmt.fnode import FNode
-from pysmt.shortcuts import And, read_smtlib, write_smtlib
+from tlemma_enum.util.pysmt import SuspendTypeChecking
+from tlemma_enum.walkers.normalizer import NormalizerWalker
 
 DIVIDE_STRATEGIES: dict[str, DivideStrategy] = {
     "partial": DivideByPartialAllSMTStrategy(),

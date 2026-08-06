@@ -5,15 +5,15 @@ import sys
 import time
 from typing import Iterable
 
-from enumerators.formula import get_normalized
-from enumerators.walkers.walker_bool_abstraction import (
-    BooleanAbstractionWalker,
-)
-from enumerators.walkers.walker_refinement import RefinementWalker
 from pysmt.fnode import FNode
 from pysmt.oracles import get_logic
 from pysmt.shortcuts import And, Iff, Not, Solver, read_smtlib
 from tasks.tabularallsat import ParallelWrapper, TabularAllSATInterface
+from tlemma_enum.formula import get_normalized
+from tlemma_enum.walkers.walker_bool_abstraction import (
+    BooleanAbstractionWalker,
+)
+from tlemma_enum.walkers.walker_refinement import RefinementWalker
 
 
 def assert_models_are_tsat(phi: FNode, models: list[Iterable[FNode]]) -> None:
@@ -57,7 +57,11 @@ def gt_model_count(logs: dict) -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Check T-lemmas by running AllSAT on the Boolean abstraction of phi & lemmas, and checking that all refined models are T-satisfying."
+        description=(
+            "Check T-lemmas by running AllSAT on the Boolean abstraction of "
+            "phi & lemmas, and checking that all refined models are "
+            "T-satisfying."
+        )
     )
     parser.add_argument("input_formula", help="Path to input SMT-LIB formula")
     parser.add_argument("base_output_path", help="Base path for output files")
@@ -131,13 +135,14 @@ def main():
         phi_atoms
     ), "Abstraction should preserve atoms of phi"
 
-    # NOTE: Some lemmas introduce fresh Skolem variables, which should be existentially quantified for the lemma to
-    # be t-valid.
-    # However, MathSAT does not support quantifiers, and will flag these lemmas as non t-valid.
-    # Anyway, these new variables only appear in fresh atoms, which are later existentially quantified, so that
-    # correctness is preserved.
-    # It seems the only case this happens is with arrays (e.g. extensionality lemma), so we skip the following checks
-    # in that case.
+    # NOTE: Some lemmas introduce fresh Skolem variables, which should be
+    # existentially quantified for the lemma to be t-valid.
+    # However, MathSAT does not support quantifiers, and will flag these lemmas
+    # as non t-valid.
+    # Anyway, these new variables only appear in fresh atoms, which are later
+    # existentially quantified, so that correctness is preserved.
+    # It seems the only case this happens is with arrays (e.g. extensionality
+    # lemma), so we skip the following checks in that case.
     if not get_logic(phi).theory.arrays:
         assert_lemmas_are_tvalid(lemmas)
         # assert_phi_equiv_phi_and_lemmas(phi, phi_and_lemmas)
@@ -173,7 +178,10 @@ def main():
         gt_count = gt_model_count(gt_logs)
         assert (
             refined_models_count == gt_count
-        ), f"Refined models number should match ground truth: {refined_models_count} vs {gt_count}"
+        ), (
+            "Refined models number should match ground truth: "
+            f"{refined_models_count} vs {gt_count}"
+        )
 
     logger["T-LEMMAS CHECK"] = {}
     logger["T-LEMMAS CHECK"]["Total time"] = time.time() - start_time
