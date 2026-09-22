@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Any
 
 import pysmt.environment
-from enumerators.util.pysmt import SuspendTypeChecking
 from pysmt.fnode import FNode
 from pysmt.shortcuts import read_smtlib
+from tlemma_enum.util.pysmt import SuspendTypeChecking
 
 TLEMMAS_NUM_KEY = "Lemmas"
 TLEMMAS_AVG_SIZE_KEY = "Average T-lemma size"

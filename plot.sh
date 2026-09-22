@@ -24,6 +24,14 @@ labels=(
   "CP&C+Proj.+Part."
 )
 
+colors=(
+  "tab:blue"
+  "tab:orange"
+  "tab:green"
+  "tab:red"
+  "tab:purple"
+)
+
 benchmarks=(
   "synthetic:3600"
   "planning:3600"
@@ -41,7 +49,12 @@ for benchmark_timeout in "${benchmarks[@]}"; do
 
   data_args=()
   for ((i = 0; i < ${#configs[@]}; i++)); do
-    data_args+=(--data "${results_dir}/${configs[$i]}/${benchmark}" "${labels[$i]}")
+    data_args+=(
+      --data
+      "${results_dir}/${configs[$i]}/${benchmark}"
+      "${labels[$i]}"
+      "${colors[$i]}"
+    )
   done
 
   "$python_bin" scripts/plots/compare_tlemmas_generation_time.py \
@@ -57,9 +70,9 @@ mkdir -p "$numeric_out_dir"
 
 "$python_bin" scripts/plots/compare_tlemmas_generation_time.py \
   --data "${results_dir}/test_divconq_proj_part/${numeric_benchmark}" \
-  "C&C+Proj.+Part." \
+  "C&C+Proj.+Part." "${colors[3]}" \
   --data "${results_dir}/test_divconq_proj_part_divbyproj/${numeric_benchmark}" \
-  "CP&C+Proj.+Part." \
+  "CP&C+Proj.+Part." "${colors[4]}" \
   --timeout 14400 \
   --out-dir "$numeric_out_dir" \
   "${extra_args[@]}"
