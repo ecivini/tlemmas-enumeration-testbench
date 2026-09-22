@@ -260,7 +260,7 @@ def _set_tick_fontsize(ax: pltaxes.Axes) -> None:
 
 
 def create_cactus_plot(
-    datasets: Sequence[tuple[dict[str, float], str]],
+    datasets: Sequence[tuple[dict[str, float], str, str]],
     timeout: float,
     out_path: Path,
     legend_out_path: Path | None = None,
@@ -274,20 +274,21 @@ def create_cactus_plot(
     keys = set(datasets[0][0])
     if not keys:
         raise ValueError("No common benchmark data to plot")
-    for data, label in datasets[1:]:
+    for data, label, _ in datasets[1:]:
         if set(data) != keys:
             raise ValueError(f"{label} does not have the same problem keys")
 
     _, ax = plt.subplots(figsize=figsize)
     legend_handles = []
     legend_labels = []
-    for idx, (data, label) in enumerate(datasets):
+    for idx, (data, label, color) in enumerate(datasets):
         sorted_times = sorted(min(data[problem], timeout) for problem in keys)
         x_values = np.arange(1, len(sorted_times) + 1)
         (line,) = ax.plot(
             x_values,
             sorted_times,
             label=_method_label(label),
+            color=color,
             marker=markers[idx % len(markers)],
             markersize=2,
         )
@@ -505,11 +506,14 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--data",
-        nargs=2,
+        nargs=3,
         action="append",
         required=True,
-        metavar=("DIR", "LABEL"),
-        help="A standardized results directory and its label (repeatable).",
+        metavar=("DIR", "LABEL", "COLOR"),
+        help=(
+            "A standardized results directory, its label, and a Matplotlib "
+            "cactus color (repeatable)."
+        ),
     )
     parser.add_argument("--out-dir", type=Path, default=Path("."))
     parser.add_argument(
@@ -529,23 +533,31 @@ def _parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if len(args.data) < 2:
         parser.error("At least 2 datasets are required")
+    for _, label, color in args.data:
+        if not matplotlib.colors.is_color_like(color):
+            parser.error(
+                f"Invalid color {color!r} for dataset {label!r}; "
+                "expected a Matplotlib color"
+            )
     return args
 
 
 def main() -> None:
     args = _parse_args()
     labels: list[str] = []
+    colors: list[str] = []
     times: list[dict[str, float]] = []
     lemma_counts: list[dict[str, float]] = []
     median_sizes: list[dict[str, float]] = []
 
-    for dir_path, label in args.data:
+    for dir_path, label, color in args.data:
         run_times, run_lemma_counts, run_median_sizes = _load_run_data(
             Path(dir_path),
             timeout=args.timeout,
             read_lemma_stats=args.lemma_stats,
         )
         labels.append(label)
+        colors.append(color)
         times.append(run_times)
         lemma_counts.append(run_lemma_counts)
         median_sizes.append(run_median_sizes)
@@ -565,7 +577,10 @@ def main() -> None:
         out_dir=args.out_dir,
     )
     create_cactus_plot(
-        [(cactus_times[i], labels[i]) for i in range(len(labels))],
+        [
+            (cactus_times[i], labels[i], colors[i])
+            for i in range(len(labels))
+        ],
         timeout=args.timeout,
         out_path=args.out_dir / "cactus_all_methods.pdf",
         legend_out_path=args.out_dir / "cactus_all_methods_legend.pdf",
